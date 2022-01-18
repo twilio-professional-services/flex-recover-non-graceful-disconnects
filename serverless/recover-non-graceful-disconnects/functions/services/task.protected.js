@@ -30,6 +30,17 @@ const getTask = async (workspaceSid, taskSid) => {
   }
 };
 
+const updateTask = async (
+  workspaceSid,
+  taskSid,
+  payload) => {
+  const task = await twilioClient.taskrouter
+    .workspaces(workspaceSid)
+    .tasks(taskSid)
+    .update(payload);
+  console.log(`Updated task ${task.sid} with payload ${JSON.stringify(payload)}`);
+};
+
 const enqueueCallTask = async (callSid, workflowSid, attributes, priority) => {
   const twiml = new Twilio.twiml.VoiceResponse();
   twiml
@@ -55,5 +66,6 @@ const enqueueCallTask = async (callSid, workflowSid, attributes, priority) => {
 module.exports = {
   createTask,
   getTask,
+  updateTask,
   enqueueCallTask,
 };

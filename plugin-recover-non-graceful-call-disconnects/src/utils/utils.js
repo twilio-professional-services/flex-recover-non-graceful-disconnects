@@ -15,9 +15,12 @@ class Utils {
     body: new URLSearchParams(body),
   });
 
-  get flexState() {
-    return this._manager.store.getState().flex;
-  }
+  get flexState() { return this._manager.store.getState().flex; }
+
+  get workerTasks() { return this.flexState.worker.tasks; }
+
+  get loginHandler() { return this.flexState.session.loginHandler; }
+
 
   get userToken() {
     return this.flexState.session.ssoTokenPayload.token;

@@ -22,6 +22,7 @@ class ConferenceService {
     const fetchResponse = await fetch(endConferenceUrl, fetchOptions);
     const endConferenceResult = await fetchResponse.json();
     console.debug("endConference result", endConferenceResult);
+    return endConferenceResult;
   };
 
   /**
@@ -56,6 +57,7 @@ class ConferenceService {
       "updateEndConferenceOnExit result",
       updateEndConferenceOnExitResult
     );
+    return updateEndConferenceOnExitResult;
   };
 }
 

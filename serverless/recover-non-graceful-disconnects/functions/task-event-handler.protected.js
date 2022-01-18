@@ -26,43 +26,35 @@ exports.handler = async function (context, event, callback) {
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
   const task = require(Runtime.getFunctions()["services/task"].path);
 
-  //const ANNOUNCEMENT_PATH_CONNECTION_TO_AGENT_LOST = 'connection-to-agent-lost.mp3';
-
   const response = new Twilio.Response();
   response.appendHeader("Access-Control-Allow-Origin", "*");
   response.appendHeader("Access-Control-Allow-Methods", "OPTIONS POST GET");
   response.appendHeader("Access-Control-Allow-Headers", "Content-Type");
   response.appendHeader("Content-Type", "application/json");
 
-  const {
-    EventType: eventType,
-    EventDescription: eventDescription,
-    TaskSid: taskSid,
-    TaskAttributes: taskAttributes,
-    TaskCanceledReason: taskCanceledReason,
-    WorkflowSid: workflowSid,
-  } = event;
+  const payload = event[0]["data"]["payload"];
 
-  const syncMapSuffix = "ActiveConferences";
-  const syncMapName = `Global.${syncMapSuffix}`;
-  // TODO: Minimize use of global Sync Map (not scalable)
+  const eventType = payload["eventtype"];
+  const taskSid = payload["task_sid"];
+  const taskChannel = payload["task_channel_unique_name"];
+  const taskAttributesString = payload["task_attributes"];
+  const taskAttributes = JSON.parse(taskAttributesString);
+  const workflowSid = payload["workflow_sid"];
 
-  console.log(
-    `'${eventType}' event for ${taskSid}, with description '${eventDescription}'`
-  );
+  console.debug(`'${eventType}' event for '${taskChannel}' task ${taskSid}`);
 
-  // We only care about recovery ping tasks
-  if (workflowSid != RECOVERY_PING_WORKFLOW_SID) {
-    console.log(`Not a recovery ping task`);
+  // Skip irrelevant events/tasks
+  if (!isRelevantPingTaskEvent(context, event) && !isRelevantVoiceTaskEvent(event)) {
+    console.debug(`Irrelevant event!`);
     return callback(null, {});
   }
 
-  // We only care about ping tasks that are cleanly completed, or that hit their TTL and are thus canceled
-  // TODO: Test the TTL/timeout stuff
-  if (eventType !== "task.completed" && eventType !== "task.canceled") {
-    console.log(`Irrelevant event!`);
-    return callback(null, {});
-  }
+
+  console.debug(`event_type: ${eventType}`);
+  console.debug(`task_sid: ${taskSid}`);
+  console.debug(`task_channel_unique_name: ${taskChannel}`);
+  console.debug(`task_attributes: ${taskAttributesString}`);
+  console.debug(`workflow_sid: ${workflowSid}`);
 
   // Make sure we prep for the customer dropping out of multiparty conference (i.e. don't end it!)
   // TODO: Keep conference going if multiple parties
@@ -71,34 +63,60 @@ exports.handler = async function (context, event, callback) {
   // );
   // await conference.updateConferenceParticipant(conferenceSid, participantCallSid, { endConferenceOnExit });
 
-  // Go ahead and enqueue new call task
+  if (isRelevantPingTaskEvent(context, event)) {
+    // We know ping task was completed or canceled
+    // So go ahead and enqueue new reconnect call task for the disconnected customer
 
-  // First, we need the attributes from the original task
-  // Despite the docs, TaskAttributes are not part of the callback event
-  // TODO: Use state model instead of Taskrouter's REST API
-  const pingTask = await task.getTask(WORKSPACE_SID, taskSid);
-  const originalAttributes = JSON.parse(pingTask.attributes);
+    // First, we need the attributes from the original call task
+    // Since these were propagated onto the recovery ping task, we have them
 
-  // If the ping task was successful (aka completed), then route to agent
-  // If the ping task was unsuccessful (aka canceled), then route to queue
-  // Clear the existing conference details
-  const newAttributes = {
-    ...originalAttributes,
-    targetWorkerSid:
-      eventType === "task.completed"
-        ? taskAttributes.disconnectedWorkerSid
-        : undefined,
-    isReconnect: true,
-    conference: {},
-  };
+    // If the ping task was successful (aka completed), then route to agent
+    // If the ping task was unsuccessful (aka canceled), then route to queue
+    // Clear the existing conference details from attributes (might not be needed, but seems wise)
+    const newAttributes = {
+      ...taskAttributes,
+      targetWorkerSid:
+        eventType === "task.completed"
+          ? taskAttributes.disconnectedWorkerSid
+          : undefined,
+      isReconnect: true,
+      conference: {},
+    };
 
-  const priority = 1000;
-  await task.enqueueCallTask(
-    originalAttributes.call_sid,
-    originalAttributes.disconnectedTaskWorkflowSid,
-    newAttributes,
-    priority
-  );
+    const priority = 1000;
+    await task.enqueueCallTask(
+      newAttributes.call_sid,
+      newAttributes.disconnectedTaskWorkflowSid,
+      newAttributes,
+      priority
+    );
+  }
+
+  if (isRelevantVoiceTaskEvent(event)) {
+    // The reconnect voice task entered the task queue.
+    // This is the optimal point to complete the original voice task that's assigned to the disconnected agent
+    // as it minimizes (arguably elimates) risk of another voice call reservation being made against that agent.
+    // e.g. if we completed the task within Flex upon receipt of the ping task, there may not yet be a reconnect task
+    // sitting in queue for the agent, and so any other pending voice task could be reserved to the agent.
+    // The reconnect task is always a higher priority task, so as long as it's in the queue - it will be the first task
+    // to be reserved to the agent.
+
+    // Check if original task isn't already completed first (since it's possible that this event could fire more than
+    // once - e.g. if task falls back to an overflow queue)
+    // TODO: Pull task state in from our state model vs TR REST API
+    const originalTaskSid = taskAttributes.disconnectedTaskSid;
+    const originalTask = await task.getTask(WORKSPACE_SID, originalTaskSid);
+    if (originalTask && originalTask.assignmentStatus === "wrapping") {
+      console.debug(
+        `Completing original disconnected call task with SID ${originalTaskSid}`
+      );
+      task.updateTask(WORKSPACE_SID, originalTaskSid, {
+        assignmentStatus: "completed",
+        reason:
+          "Non-graceful agent disconnection resulted in a new reconnect task",
+      });
+    }
+  }
 
   response.setBody({
     success: true,
@@ -106,3 +124,34 @@ exports.handler = async function (context, event, callback) {
 
   callback(null, response);
 };
+
+/**
+ * For ping tasks, we only care about those that are cleanly completed, or that hit their TTL and are thus canceled
+ */
+function isRelevantPingTaskEvent(context, event) {
+  const payload = event[0]["data"]["payload"];
+  const eventType = payload["eventtype"];
+  const workflowSid = payload["workflow_sid"];
+
+  return (
+    workflowSid == context.RECOVERY_PING_WORKFLOW_SID &&
+    (eventType === "task.completed" || eventType === "task.canceled")
+  );
+}
+
+/**
+ * For voice tasks, we only care about reconnect tasks that hit the queue
+ */
+function isRelevantVoiceTaskEvent(event) {
+  const payload = event[0]["data"]["payload"];
+  const eventType = payload["eventtype"];
+  const taskChannel = payload["task_channel_unique_name"];
+  const taskAttributesString = payload["task_attributes"];
+  const taskAttributes = JSON.parse(taskAttributesString);
+
+  return (
+    taskChannel === "voice" &&
+    eventType === "task-queue.entered" &&
+    taskAttributes.isReconnect === true
+  );
+}

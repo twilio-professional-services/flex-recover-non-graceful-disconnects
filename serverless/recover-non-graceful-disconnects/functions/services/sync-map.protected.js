@@ -1,6 +1,6 @@
-const createSyncMap = (mapName) => {
+const createSyncMap = (serviceSid, mapName) => {
   console.log(`Creating Sync Map ${mapName}`);
-  return twilioClient.sync.services(SYNC_SERVICE_SID).syncMaps.create({
+  return twilioClient.sync.services(serviceSid).syncMaps.create({
     uniqueName: mapName,
   });
 };
@@ -25,8 +25,8 @@ const addMapItem = async (serviceSid, mapName, itemKey, itemData, isRetry) => {
       return;
     }
     // Retry by creating sync map first (most common error scenario is that the map does not exist)
-    await createSyncMap(mapName);
-    await addSyncMapItem(mapName, itemKey, itemData, true);
+    await createSyncMap(serviceSid, mapName);
+    await addMapItem(serviceSid, mapName, itemKey, itemData, true);
   }
 };
 

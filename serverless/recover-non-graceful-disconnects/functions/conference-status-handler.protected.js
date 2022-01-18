@@ -32,10 +32,10 @@ exports.handler = async function (context, event, callback) {
     RECOVERY_PING_WORKFLOW_SID,
   } = context;
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
-  const conference = require(Runtime.getFunctions()["services/conference"]
+  const conferenceService = require(Runtime.getFunctions()["services/conference"]
     .path);
-  const sync = require(Runtime.getFunctions()["services/sync-map"].path);
-  const task = require(Runtime.getFunctions()["services/task"].path);
+  const syncService = require(Runtime.getFunctions()["services/sync-map"].path);
+  const taskService = require(Runtime.getFunctions()["services/task"].path);
 
   const ANNOUNCEMENT_PATH_CONNECTION_TO_AGENT_LOST =
     "connection-to-agent-lost.mp3";
@@ -44,6 +44,7 @@ exports.handler = async function (context, event, callback) {
     CallSid: eventCallSid,
     ConferenceSid: eventConferenceSid,
     StatusCallbackEvent: statusCallbackEvent,
+    Reason: reason
   } = event;
 
   const syncMapSuffix = "ActiveConferences";
@@ -52,24 +53,21 @@ exports.handler = async function (context, event, callback) {
 
   console.log(`'${statusCallbackEvent}' event for ${eventConferenceSid}`);
 
-  const syncMapPromises = [];
+  //Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
 
-  if (statusCallbackEvent == "conference-end") {
+  if (statusCallbackEvent === "conference-end") {
     // Clean up the Sync Map entry - no longer of use
-    syncMapPromises.push(
-      sync.deleteMapItem(SYNC_SERVICE_SID, syncMapName, eventConferenceSid)
-    );
-    await Promise.all(syncMapPromises);
+    console.log(`Conference ended with reason: '${reason}'`);
+    await syncService.deleteMapItem(SYNC_SERVICE_SID, syncMapName, eventConferenceSid)
     return callback(null, {});
   }
 
   // All we care about is participant-leave
   if (statusCallbackEvent !== "participant-leave") {
-    console.log(`Irrelevant event!`);
     return callback(null, {});
   }
 
-  const globalSyncMapItem = await sync.getMapItem(
+  const globalSyncMapItem = await syncService.getMapItem(
     SYNC_SERVICE_SID,
     syncMapName,
     eventConferenceSid
@@ -87,14 +85,22 @@ exports.handler = async function (context, event, callback) {
     taskAttributes,
     taskWorkflowSid,
     workerSid,
+    customerCallSid,
     workerCallSid,
     workerName,
-    wasGracefulDisconnect,
+    wasGracefulWorkerDisconnect,
   } = globalActiveConference;
 
   const parsedAttributes = JSON.parse(taskAttributes);
 
-  const didAgentLeave = workerCallSid && workerCallSid == eventCallSid;
+  const didCustomerLeave = customerCallSid && customerCallSid === eventCallSid;
+  const didAgentLeave = workerCallSid && workerCallSid === eventCallSid;
+
+  if (didCustomerLeave) {
+    // Might need to use this information later
+    console.log(`Customer left conference. This is as good as conference-end, but just log it for now`);
+    return callback(null, {});
+  }
 
   if (!didAgentLeave) {
     // We don't need to do anything unless it's the agent who disconnects non-gracefully
@@ -102,8 +108,18 @@ exports.handler = async function (context, event, callback) {
     return callback(null, {});
   }
 
-  if (wasGracefulDisconnect) {
+  // Did agent leave by hanging up?
+  if (wasGracefulWorkerDisconnect) {
     console.log(`Agent left by clicking Hangup. Graceful. Nothing more to do`);
+    return callback(null, {});
+  }
+
+  // Go grab the conference and double-check it's not ended already (sometimes participant-leave events 
+  // come before conference-end, sometimes after, so go to the source just to be sure)
+  const conference = await conferenceService.fetchConference(eventConferenceSid);
+  
+  if (conference && conference.status === "completed") {
+    console.log(`Conference has ended with reason: '${conference.reasonConferenceEnded}`);
     return callback(null, {});
   }
 
@@ -111,7 +127,7 @@ exports.handler = async function (context, event, callback) {
 
   // Inform all conference participants of what's happening
   const fullAnnouncementPath = `https://${DOMAIN_NAME}/${ANNOUNCEMENT_PATH_CONNECTION_TO_AGENT_LOST}`;
-  await conference.makeConferenceAnnouncement(
+  await conferenceService.makeConferenceAnnouncement(
     eventConferenceSid,
     fullAnnouncementPath
   );
@@ -123,16 +139,13 @@ exports.handler = async function (context, event, callback) {
     disconnectedTime: new Date().toISOString(),
   };
 
-  syncMapPromises.push(
-    sync.updateMapItem(
+  
+  await syncService.updateMapItem(
       SYNC_SERVICE_SID,
       syncMapName,
       eventConferenceSid,
       syncMapItemData
-    )
-  );
-
-  await Promise.all(syncMapPromises);
+    );
 
   // Create the ping task.
   // Once worker recovers from whatever system issue caused the diconnect (e.g. page refresh), the ping
@@ -153,15 +166,17 @@ exports.handler = async function (context, event, callback) {
     disconnectedTime: syncMapItemData.disconnectedTime,
   };
 
+  const timeout = 60;
+  const priority = 1000;
   console.log(
     "Creating ping task to ensure worker is reachable before taking customer out of current conference"
   );
-  await task.createTask(
+  await taskService.createTask(
     WORKSPACE_SID,
     RECOVERY_PING_WORKFLOW_SID,
     newTaskAttributes,
-    15,
-    1000
+    timeout,
+    priority
   );
 
   callback(null, {});

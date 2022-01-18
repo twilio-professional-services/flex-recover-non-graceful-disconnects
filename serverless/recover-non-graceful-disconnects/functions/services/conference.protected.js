@@ -62,9 +62,26 @@ const updateConference = async (conferenceSid, payload) => {
   return response;
 };
 
+
+const fetchConference = async (conferenceSid) => {
+  console.log(
+    `Fetching ${conferenceSid}`
+  );
+  try {
+    const conference = await twilioClient
+      .conferences(conferenceSid)
+      .fetch();
+    return conference;
+  } catch (error) {
+    console.error(`Error fetching conference ${conferenceSid}`, error);
+    return undefined;
+  }
+};
+
 module.exports = {
   updateConference,
   updateConferenceParticipant,
   makeConferenceAnnouncement,
   setEndConferenceOnExit,
+  fetchConference
 };

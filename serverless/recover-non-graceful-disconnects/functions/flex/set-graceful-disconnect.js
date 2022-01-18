@@ -21,22 +21,24 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
   const sync = require(Runtime.getFunctions()["services/sync-map"].path);
 
-  const { conferenceSid } = event;
+  const { conferenceSid, workerSid } = event;
 
   const syncMapSuffix = "ActiveConferences";
-  // Global sync map is used by the conference status handler to find the worker associated with
+    // Global sync map is used by the conference status handler to find the worker associated with
   // a conference - in determining when a worker leaves non-gracefully
-  const syncMapName = `Global.${syncMapSuffix}`;
+  const globalSyncMapName = `Global.${syncMapSuffix}`;
+  // Worker sync map is used by Flex Plugin to access state of a worker's active conferences
+  // (e.g. after a page reload or after navigating away)
+  const workerSyncMapName = `Worker.${workerSid}.${syncMapSuffix}`;
+
 
   console.log(
-    `Setting wasGracefulDisconnect=true for conference ${conferenceSid}`
+    `Setting wasGracefulWorkerDisconnect=true for conference ${conferenceSid}`
   );
-
-  const syncMapPromises = [];
 
   const globalSyncMapItem = await sync.getMapItem(
     SYNC_SERVICE_SID,
-    syncMapName,
+    globalSyncMapName,
     conferenceSid
   );
 
@@ -47,19 +49,24 @@ exports.handler = TokenValidator(async function (context, event, callback) {
 
   const newSyncMapItemData = {
     ...globalSyncMapItem.data,
-    wasGracefulDisconnect: true,
+    wasGracefulWorkerDisconnect: true,
   };
 
-  syncMapPromises.push(
+
+  await Promise.all([
     sync.updateMapItem(
       SYNC_SERVICE_SID,
-      syncMapName,
+      globalSyncMapName,
+      conferenceSid,
+      newSyncMapItemData
+    ),
+    sync.updateMapItem(
+      SYNC_SERVICE_SID,
+      workerSyncMapName,
       conferenceSid,
       newSyncMapItemData
     )
-  );
-
-  await Promise.all(syncMapPromises);
+  ]);
 
   response.setBody({
     success: true,

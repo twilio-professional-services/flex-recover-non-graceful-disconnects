@@ -91,6 +91,21 @@ This section outlines the required configuration in your Twilio Flex account for
 
   TODO: Screenshots for workflows
 
+### Taskrouter Event Callback URL
+
+EDIT: Create a Taskrouter Event Stream webhook sink
+
+twilio api:events:v1:sinks:create --description 'Lindsay TR Event Stream Webhook Sink' --sink-configuration '{"destination":"https://recover-non-graceful-call-disconnects-8982-dev.twil.io/task-event-handler","method":"POST","batch_events":true}' --sink-type webhook
+
+NOTE the generated SID
+
+twilio api:events:v1:subscriptions:create --description 'TR subscription to task.completed, task.canceled, task-queue.entered' --sink-sid DG87f6eff6b376bc2a299005558d8f80ef --types '{"type":"com.twilio.taskrouter.task.completed","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task.canceled","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task-queue.entered","schema_version":1}'
+
+twilio api:events:v1:subscriptions:create
+1. Navigate to TaskRouter -> Workspaces -> Flex Task Assignment -> Settings
+2. Set the Event Callback URL to point to the `task-event-handler` function - using the Domain value you copied in the Serverless Functions Deploy section above
+e.g. https://recover-non-graceful-call-disconnects-1234-dev.twil.io/task-event-handler
+
 
 ## Twilio Flex Plugins
 This section will go through the steps to prepare the Flex plugins in this sample solution for use in your development environment and deployment to your Flex account.

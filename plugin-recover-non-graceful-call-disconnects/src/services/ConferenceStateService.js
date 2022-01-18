@@ -5,16 +5,11 @@ import { utils } from "../utils";
  * sharing of conference/task details without needing to make frequent Twilio REST API calls.
  */
 class ConferenceStateService {
+
+
+
   /**
    * Adds the initial state of the conference
-   *
-   * @param conferenceSid
-   * @param taskSid
-   * @param taskAttributes
-   * @param workerSid
-   * @param workerCallSid
-   * @param workerName
-   * @param wasGracefulDisconnect
    */
   static addActiveConference = async (
     conferenceSid,
@@ -22,9 +17,10 @@ class ConferenceStateService {
     taskAttributes,
     taskWorkflowSid,
     workerSid,
+    customerCallSid,
     workerCallSid,
     workerName,
-    wasGracefulDisconnect = false
+    wasGracefulWorkerDisconnect = false,
   ) => {
     console.debug("addActiveConference", conferenceSid);
 
@@ -36,15 +32,17 @@ class ConferenceStateService {
       taskAttributes: JSON.stringify(taskAttributes),
       taskWorkflowSid,
       workerSid,
+      customerCallSid,
       workerCallSid,
       workerName,
-      wasGracefulDisconnect,
+      wasGracefulWorkerDisconnect,
     };
 
     const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
     const fetchResponse = await fetch(addActiveConferenceUrl, fetchOptions);
     const addActiveConferenceResult = await fetchResponse.json();
     console.debug("addActiveConference result", addActiveConferenceResult);
+    return addActiveConferenceResult;
   };
 
   /**
@@ -53,19 +51,21 @@ class ConferenceStateService {
    * @param conferenceSid
    *
    */
-  static setGracefulDisconnect = async (conferenceSid) => {
+  static setGracefulDisconnect = async (conferenceSid, workerSid) => {
     console.debug("setGracefulDisconnect", conferenceSid);
 
     const setGracefulDisconnectUrl = `${utils.baseServerlessUrl}/flex/set-graceful-disconnect`;
     const fetchBody = {
       Token: utils.userToken,
       conferenceSid,
+      workerSid
     };
 
     const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
     const fetchResponse = await fetch(setGracefulDisconnectUrl, fetchOptions);
     const setGracefulDisconnectResult = await fetchResponse.json();
     console.debug("setGracefulDisconnect result", setGracefulDisconnectResult);
+    return setGracefulDisconnectResult;
   };
 
   /**
@@ -86,6 +86,7 @@ class ConferenceStateService {
     const fetchResponse = await fetch(clearActiveConferenceUrl, fetchOptions);
     const clearActiveConferenceResult = await fetchResponse.json();
     console.debug("clearActiveConference result", clearActiveConferenceResult);
+    return clearActiveConferenceResult;
   };
 }
 

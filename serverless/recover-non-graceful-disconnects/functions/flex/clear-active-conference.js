@@ -27,17 +27,17 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   const { conferenceSid } = event;
 
   const syncMapSuffix = "ActiveConferences";
-  // Global sync map is used by the conference status handler to find the worker associated with
+    // Global sync map is used by the conference status handler to find the worker associated with
   // a conference - in determining when a worker leaves non-gracefully
-  syncMapName = `Global.${syncMapSuffix}`;
+  const globalSyncMapName = `Global.${syncMapSuffix}`;
+  // Worker sync map is used by Flex Plugin to access state of a worker's active conferences
+  // (e.g. after a page reload or after navigating away)
+  const workerSyncMapName = `Worker.${workerSid}.${syncMapSuffix}`;
 
-  const syncMapPromises = [];
-
-  syncMapPromises.push(
-    sync.deleteMapItem(SYNC_SERVICE_SID, syncMapName, conferenceSid)
-  );
-
-  await Promise.all(syncMapPromises);
+  await Promise.all([
+    sync.deleteMapItem(SYNC_SERVICE_SID, globalSyncMapName, conferenceSid),
+    sync.deleteMapItem(SYNC_SERVICE_SID, workerSyncMapName, conferenceSid)
+  ]);
 
   response.setBody({
     success: true,

@@ -1,6 +1,9 @@
 import { Actions, Notifications, TaskHelper } from "@twilio/flex-ui";
 import { Constants, utils } from "../utils";
 import { ConferenceService, ConferenceStateService } from "../services";
+import { ConferenceState } from "../states";
+
+const reservationListeners = new Map();
 
 /**
  * Handles reservationCreated events for all 'reconnect ping' tasks, and
@@ -8,36 +11,104 @@ import { ConferenceService, ConferenceStateService } from "../services";
  * that responds to the successful ping (i.e. Taskrouter workspace event listener)
  */
 export default function reservationCreated() {
-  // In addition to the reservationCreated listener logic, we need to also account for the fact that
-  // the UI may not actually receive this event (e.g if it fires during a page refresh, or if browser
-  // not reachable)
-  utils.manager.workerClient.reservations.forEach((reservation) => {
+  utils.manager.workerClient.on("reservationCreated", (reservation) => {
+    console.debug(`Initializing new reservation ${reservation.sid}`);
     initializeReservation(reservation);
   });
 
-  utils.manager.workerClient.on("reservationCreated", (reservation) => {
-    initializeReservation(reservation);
+  utils.manager.events.addListener("pluginsLoaded", async () => {
+    await ConferenceState.initialize();
+
+    // In addition to the reservationCreated listener logic, we need to also account for the fact that
+    // the UI may not actually receive this event (e.g if it fires during a page refresh, or if browser
+    // not reachable)
+    // Do the call tasks first
+    utils.workerTasks.forEach((reservation) => {
+      if (
+        TaskHelper.isCallTask(reservation.source) &&
+        TaskHelper.isInWrapupMode(reservation.source)
+      ) {
+        console.debug(
+          `Initializing reservation ${reservation.sid} from pre-existing worker call task`
+        );
+        initializeReservation(reservation);
+      }
+    });
+    // Then do the recovery ping task (if present)
+    utils.workerTasks.forEach((reservation) => {
+      if (isRecoveryPingTask(reservation.source)) {
+        console.debug(
+          `Initializing reservation ${reservation.sid} from pre-existing recovery ping task`
+        );
+        initializeReservation(reservation);
+      }
+    });
   });
 }
 
 function initializeReservation(reservation) {
   console.debug("initializeReservation", reservation);
 
-  const task = TaskHelper.getTaskByTaskSid(reservation.sid);
+  if (reservation.addListener) {
+    reservation.addListener("accepted", () => reservationAccepted(reservation));
+  }
+
+  // Depending on whether this came from state or from an event, the object will
+  // be different...
+  const reservationSid = reservation.reservationSid || reservation.sid;
+
+  console.debug("initializeReservation > reservationSid", reservationSid);
+
+  const task = TaskHelper.getTaskByTaskSid(reservationSid);
 
   if (isRecoveryPingTask(task)) {
     console.debug("initializeReservation > recovery ping task", task);
-    reservation.addListener("accepted", () => reservationAccepted(reservation));
     // Auto accept the task
+    console.debug(
+      `initializeReservation > about to accept task ${reservationSid}`
+    );
+
     Actions.invokeAction("AcceptTask", {
-      sid: reservation.sid,
+      sid: reservationSid,
     });
+
+    Notifications.showNotification(
+      Constants.FlexNotification.incomingReconnect,
+      { recoveryPingTask: task }
+    );
+    Notifications.dismissNotificationById(
+      Constants.FlexNotification.nonGracefulAgentDisconnect
+    );
     return;
   }
 
   if (TaskHelper.isCallTask(task)) {
     console.debug("initializeReservation > call task", task);
-    reservation.addListener("accepted", () => reservationAccepted(reservation));
+    if (TaskHelper.isInWrapupMode(task)) {
+      // If we arrived here via a page refresh or similar non-happy path, and task is in
+      // wrapping state, verify that the agent did not terminate the call ungracefully
+      const { conferenceSid } = task.conference;
+      if (!ConferenceState.wasGracefulWorkerDisconnect(conferenceSid)) {
+        console.debug(
+          `Non-graceful disconnect detected for conference ${conferenceSid}`
+        );
+        // TODO: FREEZE UI!
+        Notifications.showNotification(
+          Constants.FlexNotification.nonGracefulAgentDisconnect
+        );
+      }
+    }
+    return;
+  }
+}
+
+function stopReservationListeners(reservation) {
+  const listeners = reservationListeners.get(reservation);
+  if (listeners) {
+    listeners.forEach((listener) => {
+      reservation.removeListener(listener.event, listener.callback);
+    });
+    reservationListeners.delete(reservation);
   }
 }
 
@@ -52,18 +123,6 @@ function isRecoveryPingTask(task) {
 async function reservationAccepted(reservation) {
   console.debug("reservationAccepted", reservation);
   const task = TaskHelper.getTaskByTaskSid(reservation.sid);
-
-  /**
-   * Ping task logic
-   */
-  // Display notification of incoming reconnect call (notification allows agent to take action on it)
-  // too
-  if (isRecoveryPingTask(task)) {
-    Notifications.showNotification(
-      Constants.FlexNotification.incomingReconnect,
-      { recoveryPingTask: task }
-    );
-  }
 
   /**
    * Call task logic
@@ -96,12 +155,13 @@ async function reservationAccepted(reservation) {
       return;
     }
 
-    ConferenceStateService.addActiveConference(
+    await ConferenceStateService.addActiveConference(
       task.conference.conferenceSid,
-      task.sid,
+      task.taskSid,
       task.attributes,
       task.workflowSid,
       task.workerSid,
+      task.attributes.call_sid,
       myParticipant.callSid,
       utils.manager.workerClient.name
     );
@@ -111,7 +171,7 @@ async function reservationAccepted(reservation) {
     // to false during AcceptTask). So we are best to just wait til everyone has joined, conference has started, and then
     // make the update to the worker participant.
     // TODO: Validate this endConferenceOnExit workaround isn't a race condition
-    ConferenceService.updateEndConferenceOnExit(
+    await ConferenceService.updateEndConferenceOnExit(
       task.conference.conferenceSid,
       myParticipant.callSid,
       false
@@ -134,7 +194,7 @@ function waitForConferenceParticipants(task) {
         waitForConferenceInterval = clearInterval(waitForConferenceInterval);
         return;
       }
-      if (conference === undefined) {
+      if (conference === undefined || conference.conferenceSid === undefined) {
         console.debug(
           "waitForConferenceParticipants > Conference not yet set on task"
         );
@@ -147,6 +207,7 @@ function waitForConferenceParticipants(task) {
         );
         return;
       }
+
       const worker = participants.find((p) => p.participantType === "worker");
       const customer = participants.find(
         (p) => p.participantType === "customer"
