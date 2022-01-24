@@ -2,7 +2,13 @@ const Twilio = require("twilio");
 const TokenValidator = require("twilio-flex-token-validator").functionValidator;
 
 /**
- * This function is invoked from the Flex Plugin to update the endConferenceOnExit flag
+ * NOT USED. Comment is here for future use, but as of now this logic lives in
+ * a branch of the flex-dialpad-addon-plugin
+ *
+ * This function is invoked from the Flex Plugin to poll the participant
+ * when awaiting Flex native updates to endConferenceOnExit. UGLY.
+ * TODO: Once participant-modify event is working (support ticket open), remove
+ * this polling and use status callback event handler :)
  *
  */
 exports.handler = TokenValidator(async function (context, event, callback) {
@@ -18,33 +24,28 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     "services/conference"
   ].path);
 
-  const { conferenceSid, participantCallSid, endConferenceOnExit } = event;
+  const { conferenceSid, participantCallSid } = event;
 
   console.debug(
-    `Setting endConferenceOnExit to ${endConferenceOnExit} for participant ${participantCallSid} in conference ${conferenceSid}`
+    `Fetching participant ${participantCallSid} for conference ${conferenceSid}`
   );
-  const serviceResponse = await conferenceService.setEndConferenceOnExit(
+  const participant = await conferenceService.fetchParticipant(
     conferenceSid,
-    participantCallSid,
-    endConferenceOnExit
+    participantCallSid
   );
-  if (serviceResponse.participantResponse) {
-    const participantResponse = serviceResponse.participantResponse;
+  if (participant) {
     response.setBody({
       status: 200,
-      participantResponse,
+      participant,
     });
   } else {
-    const { error } = serviceResponse;
     console.error(
-      `Error setting endConferenceOnExit to ${endConferenceOnExit} for participant ${participantCallSid} in conference ${conferenceSid}`,
-      error
+      `Error fetching participant ${participantCallSid} for conference ${conferenceSid}`
     );
     response.setBody({
-      status: error.status || 500,
-      error,
+      status: 500,
     });
-    response.setStatusCode(error.status || 500);
+    response.setStatusCode(500);
   }
 
   return callback(null, response);

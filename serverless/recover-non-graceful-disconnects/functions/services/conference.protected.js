@@ -4,7 +4,7 @@ const updateConferenceParticipant = async (
   payload
 ) => {
   const response = {};
-  console.log(
+  console.debug(
     `Updating participant ${participantCallSid} for conference ${conferenceSid} with payload: ${JSON.stringify(
       payload
     )}`
@@ -46,7 +46,7 @@ const makeConferenceAnnouncement = async (conferenceSid, announceUrl) => {
 
 const updateConference = async (conferenceSid, payload) => {
   const response = {};
-  console.log(
+  console.debug(
     `Updating ${conferenceSid} with payload: ${JSON.stringify(payload)}`
   );
   try {
@@ -62,18 +62,48 @@ const updateConference = async (conferenceSid, payload) => {
   return response;
 };
 
-
 const fetchConference = async (conferenceSid) => {
-  console.log(
-    `Fetching ${conferenceSid}`
-  );
+  console.debug(`Fetching conference ${conferenceSid}`);
   try {
-    const conference = await twilioClient
-      .conferences(conferenceSid)
-      .fetch();
+    const conference = await twilioClient.conferences(conferenceSid).fetch();
     return conference;
   } catch (error) {
     console.error(`Error fetching conference ${conferenceSid}`, error);
+    return undefined;
+  }
+};
+
+const listParticipants = async (conferenceSid, attributes) => {
+  console.debug(`Listing participants for conference ${conferenceSid}`);
+  try {
+    const participants = await twilioClient
+      .conferences(conferenceSid)
+      .participants.list(attributes);
+    return participants;
+  } catch (error) {
+    console.error(
+      `Error listing participants for conference ${conferenceSid}`,
+      error
+    );
+    return [];
+  }
+};
+
+const fetchParticipant = async (conferenceSid, participantCallSid) => {
+  console.debug(
+    `Fetching participant ${participantCallSid} for conference ${conferenceSid}`
+  );
+  try {
+    const participant = await twilioClient
+      .conferences(conferenceSid)
+      .participants(participantCallSid)
+      .fetch();
+    return participant;
+  } catch (error) {
+    console.error(
+      `Error fetching participant ${participantCallSid} for conference ${conferenceSid}`,
+      error
+    );
     return undefined;
   }
 };
@@ -83,5 +113,7 @@ module.exports = {
   updateConferenceParticipant,
   makeConferenceAnnouncement,
   setEndConferenceOnExit,
-  fetchConference
+  fetchConference,
+  fetchParticipant,
+  listParticipants,
 };

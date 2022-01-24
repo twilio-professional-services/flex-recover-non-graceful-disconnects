@@ -19,24 +19,23 @@ exports.handler = TokenValidator(async function (context, event, callback) {
 
   const { ACCOUNT_SID, AUTH_TOKEN, SYNC_SERVICE_SID } = context;
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
-  const sync = require(Runtime.getFunctions()["services/sync-map"].path);
+  const syncService = require(Runtime.getFunctions()["services/sync-map"].path);
 
   const { conferenceSid, workerSid } = event;
 
   const syncMapSuffix = "ActiveConferences";
-    // Global sync map is used by the conference status handler to find the worker associated with
+  // Global sync map is used by the conference status handler to find the worker associated with
   // a conference - in determining when a worker leaves non-gracefully
   const globalSyncMapName = `Global.${syncMapSuffix}`;
   // Worker sync map is used by Flex Plugin to access state of a worker's active conferences
   // (e.g. after a page reload or after navigating away)
   const workerSyncMapName = `Worker.${workerSid}.${syncMapSuffix}`;
 
-
-  console.log(
+  console.debug(
     `Setting wasGracefulWorkerDisconnect=true for conference ${conferenceSid}`
   );
 
-  const globalSyncMapItem = await sync.getMapItem(
+  const globalSyncMapItem = await syncService.getMapItem(
     SYNC_SERVICE_SID,
     globalSyncMapName,
     conferenceSid
@@ -44,7 +43,10 @@ exports.handler = TokenValidator(async function (context, event, callback) {
 
   if (!globalSyncMapItem) {
     // Nothing in the Sync Map for this conference (weird)
-    return callback(null, {});
+    response.setBody({
+      status: 500,
+    });
+    return callback(null, response);
   }
 
   const newSyncMapItemData = {
@@ -52,23 +54,23 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     wasGracefulWorkerDisconnect: true,
   };
 
-
   await Promise.all([
-    sync.updateMapItem(
+    syncService.updateMapItem(
       SYNC_SERVICE_SID,
       globalSyncMapName,
       conferenceSid,
       newSyncMapItemData
     ),
-    sync.updateMapItem(
+    syncService.updateMapItem(
       SYNC_SERVICE_SID,
       workerSyncMapName,
       conferenceSid,
       newSyncMapItemData
-    )
+    ),
   ]);
 
   response.setBody({
+    status: 200,
     success: true,
   });
 

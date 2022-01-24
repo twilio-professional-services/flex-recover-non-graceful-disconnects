@@ -1,3 +1,14 @@
+## Known Issues
+
+### Flex `endConferenceOnExit` Idiosyncaracies 
+Flex automatically updates `endConferenceOnExit` for the entire task reservation every time a conference update comes in (as well as on task acceptance - when the conference is created). And any time there are 2 or less active participants, it unavoidably sets `endConferenceOnExit` to `true`. This is a safeguard which is valid in most cases (just not this scenario where we are wanting the customer to remain connected to the Twilio conference on non-graceful agent disconnection)
+
+We've worked around by essentially undoing the OOTB Flex conference participant update when it happens - but it does introduce split-second transient periods where `endConferenceOnExit` will be `true` for the 2 participants in conference (until our reversal API call executes to undo it).
+
+Also, the best place to execute this participant logic is in the exiting ConferenceMonitor of our flex-dialpad-addon-plugin (TODO: insert link to branch here).
+
+A Flex feature request has been logged - to ideally allow this Flex behavior to be configurable or overridden.
+
 ## Pre-Requisites
 * An active Twilio account with Flex provisioned. Refer to the [Flex Quickstart](https://www.twilio.com/docs/flex/quickstart/flex-basics#sign-up-for-or-sign-in-to-twilio-and-create-a-new-flex-project") to create one.
 * npm version 5.0.0 or later installed (type `npm -v` in your terminal to check)
@@ -91,20 +102,27 @@ This section outlines the required configuration in your Twilio Flex account for
 
   TODO: Screenshots for workflows
 
-### Taskrouter Event Callback URL
+### Taskrouter Event Stream Webhook
 
-EDIT: Create a Taskrouter Event Stream webhook sink
+This is needed for the handling of the task events - in order to detect when the ping task is successful (`reservation.accepted`), or fails (`task.canceled`). It's also used to orchestrate the optimal timing for delivering the reconnect task back to the agent, by waiting for the `task-queue.entered` event - at which point it completes the disconnected task and so opens up voice channel capacity for the target worker.
 
-twilio api:events:v1:sinks:create --description 'Lindsay TR Event Stream Webhook Sink' --sink-configuration '{"destination":"https://recover-non-graceful-call-disconnects-8982-dev.twil.io/task-event-handler","method":"POST","batch_events":true}' --sink-type webhook
+1: Create a Taskrouter Event Stream webhook sink via CLI
 
-NOTE the generated SID
+e.g.
+```
+twilio api:events:v1:sinks:create --description 'Recover Non-Graceful Disconnects - TR Event Stream Webhook Sink' --sink-configuration '{"destination":"https://recover-non-graceful-call-disconnects-1234-dev.twil.io/task-event-handler","method":"POST","batch_events":true}' --sink-type webhook
+````
+(replace the Domain  with the value you copied in the Serverless Functions Deploy section above)
 
-twilio api:events:v1:subscriptions:create --description 'TR subscription to task.completed, task.canceled, task-queue.entered' --sink-sid DG87f6eff6b376bc2a299005558d8f80ef --types '{"type":"com.twilio.taskrouter.task.completed","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task.canceled","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task-queue.entered","schema_version":1}'
+NOTE the generated SID for the Sink
 
-twilio api:events:v1:subscriptions:create
-1. Navigate to TaskRouter -> Workspaces -> Flex Task Assignment -> Settings
-2. Set the Event Callback URL to point to the `task-event-handler` function - using the Domain value you copied in the Serverless Functions Deploy section above
-e.g. https://recover-non-graceful-call-disconnects-1234-dev.twil.io/task-event-handler
+2. Create an Event Stream Subscription for the Webhook Sink
+
+e.g.
+```
+twilio api:events:v1:subscriptions:create --description 'Recover Non-Graceful Disconnects - TR Event Stream Subscription to reservation.accepted, task.canceled, task-queue.entered' --sink-sid DGXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX --types '{"type":"com.twilio.taskrouter.reservation.accepted","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task.canceled","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task-queue.entered","schema_version":1}'
+```
+(populate the `--sink-sid` value with the SID generated in previous step)
 
 
 ## Twilio Flex Plugins

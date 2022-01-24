@@ -1,12 +1,12 @@
 const createSyncMap = (serviceSid, mapName) => {
-  console.log(`Creating Sync Map ${mapName}`);
+  console.debug(`Creating Sync Map ${mapName}`);
   return twilioClient.sync.services(serviceSid).syncMaps.create({
     uniqueName: mapName,
   });
 };
 
 const addMapItem = async (serviceSid, mapName, itemKey, itemData, isRetry) => {
-  console.log(`Adding ${itemKey} to Sync Map ${mapName}`);
+  console.debug(`Adding ${itemKey} to Sync Map ${mapName}`);
   try {
     await twilioClient.sync
       .services(serviceSid)
@@ -50,13 +50,13 @@ const deleteMapItem = async (serviceSid, mapName, key) => {
       .syncMapItems(key)
       .remove();
   } catch (error) {
-    console.log(`Unable to delete Map Item: ${error}`);
+    console.debug(`Unable to delete Map Item: ${error}`);
     throw error;
   }
 };
 
 const updateMapItem = async (serviceSid, mapName, itemKey, itemData) => {
-  console.log(`Updating ${itemKey} in sync map ${mapName}`);
+  console.debug(`Updating ${itemKey} in sync map ${mapName}`);
   try {
     await twilioClient.sync
       .services(serviceSid)

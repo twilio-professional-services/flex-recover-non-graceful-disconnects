@@ -5,7 +5,7 @@ const Twilio = require("twilio");
  * It reacts to certain events for the recovery ping task, in order to
  * orchestrate when to enqueue the customer back to the recovered agent.
  *
- * Upon that ping task being completed, we enqueue the customer call as a new task,
+ * Upon that ping task being accepted, we enqueue the customer call as a new task,
  * which Taskrouter will fast-track back to the agent via Known Agent Routing.
  *
  * If the ping task times out or is rejected somehow, then it's assumed the agent is not
@@ -24,7 +24,8 @@ exports.handler = async function (context, event, callback) {
   const { ACCOUNT_SID, AUTH_TOKEN, WORKSPACE_SID, RECOVERY_PING_WORKFLOW_SID } =
     context;
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
-  const task = require(Runtime.getFunctions()["services/task"].path);
+  const taskService = require(Runtime.getFunctions()["services/task"].path);
+  const callService = require(Runtime.getFunctions()["services/call"].path);
 
   const response = new Twilio.Response();
   response.appendHeader("Access-Control-Allow-Origin", "*");
@@ -44,11 +45,13 @@ exports.handler = async function (context, event, callback) {
   console.debug(`'${eventType}' event for '${taskChannel}' task ${taskSid}`);
 
   // Skip irrelevant events/tasks
-  if (!isRelevantPingTaskEvent(context, event) && !isRelevantVoiceTaskEvent(event)) {
+  if (
+    !isRelevantPingTaskEvent(context, event) &&
+    !isRelevantVoiceTaskEvent(event)
+  ) {
     console.debug(`Irrelevant event!`);
     return callback(null, {});
   }
-
 
   console.debug(`event_type: ${eventType}`);
   console.debug(`task_sid: ${taskSid}`);
@@ -58,13 +61,19 @@ exports.handler = async function (context, event, callback) {
 
   // Make sure we prep for the customer dropping out of multiparty conference (i.e. don't end it!)
   // TODO: Keep conference going if multiple parties
-  // console.log(
+  // console.debug(
   //   `Setting endConferenceOnExit to ${endConferenceOnExit} for participant ${participantCallSid} in conference ${conferenceSid}`
   // );
   // await conference.updateConferenceParticipant(conferenceSid, participantCallSid, { endConferenceOnExit });
 
   if (isRelevantPingTaskEvent(context, event)) {
-    // We know ping task was completed or canceled
+    // We know ping task was accepted or canceled
+
+    // Complete the ping task
+    await taskService.updateTask(WORKSPACE_SID, taskSid, {
+      assignmentStatus: "completed",
+    });
+
     // So go ahead and enqueue new reconnect call task for the disconnected customer
 
     // First, we need the attributes from the original call task
@@ -76,17 +85,33 @@ exports.handler = async function (context, event, callback) {
     const newAttributes = {
       ...taskAttributes,
       targetWorkerSid:
-        eventType === "task.completed"
+        eventType === "reservation.accepted"
           ? taskAttributes.disconnectedWorkerSid
           : undefined,
       isReconnect: true,
       conference: {},
     };
 
+    const callSid = newAttributes.call_sid;
+    const workflowSid = newAttributes.disconnectedTaskWorkflowSid;
+
+    // Make sure call is in right status to be updated (customer might've dropped)
+    const serviceResponse = await callService.fetchCall(callSid);
+    if (
+      !serviceResponse.callResponse ||
+      serviceResponse.callResponse.status !== "in-progress"
+    ) {
+      console.warn(
+        `Call ${callSid} either not found, or not 'in-progress'. Not enqueuing reconnect task.`,
+        serviceResponse
+      );
+      return callback(null, {});
+    }
+
     const priority = 1000;
-    await task.enqueueCallTask(
-      newAttributes.call_sid,
-      newAttributes.disconnectedTaskWorkflowSid,
+    await callService.enqueueCallTask(
+      callSid,
+      workflowSid,
       newAttributes,
       priority
     );
@@ -105,12 +130,15 @@ exports.handler = async function (context, event, callback) {
     // once - e.g. if task falls back to an overflow queue)
     // TODO: Pull task state in from our state model vs TR REST API
     const originalTaskSid = taskAttributes.disconnectedTaskSid;
-    const originalTask = await task.getTask(WORKSPACE_SID, originalTaskSid);
+    const originalTask = await taskService.getTask(
+      WORKSPACE_SID,
+      originalTaskSid
+    );
     if (originalTask && originalTask.assignmentStatus === "wrapping") {
       console.debug(
         `Completing original disconnected call task with SID ${originalTaskSid}`
       );
-      task.updateTask(WORKSPACE_SID, originalTaskSid, {
+      await taskService.updateTask(WORKSPACE_SID, originalTaskSid, {
         assignmentStatus: "completed",
         reason:
           "Non-graceful agent disconnection resulted in a new reconnect task",
@@ -135,7 +163,7 @@ function isRelevantPingTaskEvent(context, event) {
 
   return (
     workflowSid == context.RECOVERY_PING_WORKFLOW_SID &&
-    (eventType === "task.completed" || eventType === "task.canceled")
+    (eventType === "reservation.accepted" || eventType === "task.canceled")
   );
 }
 

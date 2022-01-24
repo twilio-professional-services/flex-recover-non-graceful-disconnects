@@ -1,11 +1,11 @@
 import { Actions, Notifications, TaskHelper } from "@twilio/flex-ui";
-import { ConferenceStateService } from "../services";
+import { ConferenceService } from "../services";
 
 import { utils, Constants } from "../utils";
 
 /**
- * Handles beforeTaskAccept and afterTaskAccept events for all voice tasks and ensures the status callback listener
- * is attached, and the state is recorded (e.g. to Sync map in our example - via serverless function)
+ * Handles beforeTaskAccept for all voice tasks and ensures the status callback listener is attached
+ * NOTE: See the reservation event listener for all logic pertaining to the handling of the conference
  *
  */
 export default function acceptTask() {
@@ -31,17 +31,8 @@ export default function acceptTask() {
       // deriving who worker is (vs customer)
       payload.conferenceOptions.conferenceStatusCallback = `${utils.baseServerlessUrl}/conference-status-handler`;
       payload.conferenceOptions.statusCallback = `${utils.baseServerlessUrl}/conference-status-handler`;
-      payload.conferenceOptions.conferenceStatusCallbackEvent = "end,leave"; // We only really need end and leave
+      payload.conferenceOptions.conferenceStatusCallbackEvent = "end,leave";
       console.debug("Conference Options", payload.conferenceOptions);
-
-      // If this is a reconnect task, show the notification
-      if (task.attributes?.isReconnect === true) {
-        Notifications.showNotification(
-          Constants.FlexNotification.reconnectSuccessful
-        );
-        Notifications.dismissNotificationById(Constants.FlexNotification.nonGracefulAgentDisconnect);
-        Notifications.dismissNotificationById(Constants.FlexNotification.incomingReconnect);
-      }
     }
   });
 }

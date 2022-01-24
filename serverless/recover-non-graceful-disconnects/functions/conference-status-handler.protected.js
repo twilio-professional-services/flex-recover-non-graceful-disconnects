@@ -5,6 +5,9 @@ const Twilio = require("twilio");
  * It reacts to participant-leave events, and - if the participant who left is
  * deemed to be the agent - we assume this is a non-graceful disconnect.
  *
+ * Also reacts to participant-modify events, amnd makes sure to UNDO any over-zealous
+ * setting of endConferenceOnExit=true, that Flex does out of the box.
+ *
  * NOTE: For detecting who the agent is, we use a Sync Map - which our Flex Plugin
  * will populate - to remove the need to make expensive REST API calls to Taskrouter.
  * In a real-world scenario, we would recommend using your own backend services to
@@ -32,50 +35,35 @@ exports.handler = async function (context, event, callback) {
     RECOVERY_PING_WORKFLOW_SID,
   } = context;
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
-  const conferenceService = require(Runtime.getFunctions()["services/conference"]
-    .path);
+  const conferenceService = require(Runtime.getFunctions()[
+    "services/conference"
+  ].path);
   const syncService = require(Runtime.getFunctions()["services/sync-map"].path);
   const taskService = require(Runtime.getFunctions()["services/task"].path);
 
   const ANNOUNCEMENT_PATH_CONNECTION_TO_AGENT_LOST =
-    "connection-to-agent-lost.mp3";
+    "connection-interrupted.mp3";
 
   const {
     CallSid: eventCallSid,
     ConferenceSid: eventConferenceSid,
     StatusCallbackEvent: statusCallbackEvent,
-    Reason: reason
+    EndConferenceOnExit: eventEndConferenceOnExit,
+    Reason: eventReason,
   } = event;
 
   const syncMapSuffix = "ActiveConferences";
-  const syncMapName = `Global.${syncMapSuffix}`;
-  // TODO: Minimize use of global Sync Map (not scalable)
-
-  console.log(`'${statusCallbackEvent}' event for ${eventConferenceSid}`);
-
-  //Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
-
-  if (statusCallbackEvent === "conference-end") {
-    // Clean up the Sync Map entry - no longer of use
-    console.log(`Conference ended with reason: '${reason}'`);
-    await syncService.deleteMapItem(SYNC_SERVICE_SID, syncMapName, eventConferenceSid)
-    return callback(null, {});
-  }
-
-  // All we care about is participant-leave
-  if (statusCallbackEvent !== "participant-leave") {
-    return callback(null, {});
-  }
+  const globalSyncMapName = `Global.${syncMapSuffix}`;
 
   const globalSyncMapItem = await syncService.getMapItem(
     SYNC_SERVICE_SID,
-    syncMapName,
+    globalSyncMapName,
     eventConferenceSid
   );
 
   if (!globalSyncMapItem) {
     // Nothing in the Sync Map for this conference
-    // NOTE: Handler removes the Sync Map entry upon conference-end (see above)
+    // NOTE: Handler removes the Sync Map entry upon conference-end (see below)
     return callback(null, {});
   }
 
@@ -93,37 +81,121 @@ exports.handler = async function (context, event, callback) {
 
   const parsedAttributes = JSON.parse(taskAttributes);
 
+  const workerSyncMapName = `Worker.${workerSid}.${syncMapSuffix}`;
+  // TODO: Minimize use of global Sync Map (not scalable)
+
+  console.debug(`'${statusCallbackEvent}' event for ${eventConferenceSid}`);
+
+  //Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
+
+  if (statusCallbackEvent === "conference-end") {
+    // Clean up the Sync Map entries - no longer of use
+    console.debug(`Conference ended with reason: '${eventReason}'`);
+
+    await Promise.all([
+      syncService.deleteMapItem(
+        SYNC_SERVICE_SID,
+        globalSyncMapName,
+        eventConferenceSid
+      ),
+      syncService.deleteMapItem(
+        SYNC_SERVICE_SID,
+        workerSyncMapName,
+        eventConferenceSid
+      ),
+    ]);
+
+    return callback(null, {});
+  }
+
+  // Bail out early if it's not an event we care about
+  if (
+    statusCallbackEvent !== "participant-leave" &&
+    statusCallbackEvent !== "participant-modify"
+  ) {
+    return callback(null, {});
+  }
+
+  if (statusCallbackEvent === "participant-modify") {
+    // We're purely interested in undoing any Flex OOTB manipulation of endConferenceOnExit.
+    // For purposes of this agent disconnect use case, we care about worker only, and ensuring
+    // their endConferenceOnExit flag is false (to ensure others get to hang out in conference together
+    // whenever agent drops unexpectedly)
+    // The ONLY time we want endConferenceOnExit to actually be true (at the time of writing) is for the customer
+    // participant (unless we explicitly override it to false for certain scenarios - like when pulling the customer
+    // out of an old conference, into a new one)
+    const wasAgentModified = workerCallSid && workerCallSid === eventCallSid;
+    if (wasAgentModified) {
+      console.debug(`Agent participant ${eventCallSid} was modified`);
+      if (eventEndConferenceOnExit === true) {
+        // TODO: Special logic if we don't want this behavior for certain calls/tasks
+        console.debug(
+          `Agent participant ${eventCallSid} has an UNEXPECTED endConferenceOnExit value of 'true'. Undoing this...`
+        );
+        console.debug(
+          `Setting endConferenceOnExit to 'false' for participant ${eventCallSid} in conference ${eventConferenceSid}`
+        );
+        const serviceResponse = await conferenceService.setEndConferenceOnExit(
+          eventConferenceSid,
+          eventCallSid,
+          false
+        );
+      } else {
+        console.debug(
+          `Agent participant ${eventCallSid} wasn't modified in any way we care about. Ignoring`
+        );
+      }
+    } else {
+      console.debug(
+        `Non-agent participant ${eventCallSid} was modified. Don't care!`
+      );
+    }
+    return callback(null, {});
+  }
+
+  /**
+   * Everything here on is for participant-leave
+   */
+
   const didCustomerLeave = customerCallSid && customerCallSid === eventCallSid;
   const didAgentLeave = workerCallSid && workerCallSid === eventCallSid;
 
   if (didCustomerLeave) {
     // Might need to use this information later
-    console.log(`Customer left conference. This is as good as conference-end, but just log it for now`);
+    console.debug(
+      `Customer left conference. This is as good as conference-end, but just log it for now`
+    );
     return callback(null, {});
   }
 
   if (!didAgentLeave) {
     // We don't need to do anything unless it's the agent who disconnects non-gracefully
-    console.log(`Wasn't the agent who left, so irrelevant`);
+    console.debug(`Wasn't the agent who left, so irrelevant`);
     return callback(null, {});
   }
 
   // Did agent leave by hanging up?
   if (wasGracefulWorkerDisconnect) {
-    console.log(`Agent left by clicking Hangup. Graceful. Nothing more to do`);
+    console.debug(
+      `Agent left by clicking Hangup. Graceful. Nothing more to do`
+    );
     return callback(null, {});
   }
 
-  // Go grab the conference and double-check it's not ended already (sometimes participant-leave events 
+  // Go grab the conference and double-check it's not ended already (sometimes participant-leave events
   // come before conference-end, sometimes after, so go to the source just to be sure)
-  const conference = await conferenceService.fetchConference(eventConferenceSid);
-  
+  const conference = await conferenceService.fetchConference(
+    eventConferenceSid
+  );
+
   if (conference && conference.status === "completed") {
-    console.log(`Conference has ended with reason: '${conference.reasonConferenceEnded}`);
+    console.debug(
+      `Conference has ended with reason: '${conference.reasonConferenceEnded}`
+    );
     return callback(null, {});
   }
 
-  console.log(`Agent left non-gracefully. Engaging recovery logic...`);
+  console.debug(`Agent left non-gracefully. Engaging recovery logic...`);
 
   // Inform all conference participants of what's happening
   const fullAnnouncementPath = `https://${DOMAIN_NAME}/${ANNOUNCEMENT_PATH_CONNECTION_TO_AGENT_LOST}`;
@@ -139,13 +211,20 @@ exports.handler = async function (context, event, callback) {
     disconnectedTime: new Date().toISOString(),
   };
 
-  
-  await syncService.updateMapItem(
+  await Promise.all([
+    syncService.updateMapItem(
       SYNC_SERVICE_SID,
-      syncMapName,
+      globalSyncMapName,
       eventConferenceSid,
       syncMapItemData
-    );
+    ),
+    syncService.updateMapItem(
+      SYNC_SERVICE_SID,
+      workerSyncMapName,
+      eventConferenceSid,
+      syncMapItemData
+    ),
+  ]);
 
   // Create the ping task.
   // Once worker recovers from whatever system issue caused the diconnect (e.g. page refresh), the ping
@@ -168,7 +247,7 @@ exports.handler = async function (context, event, callback) {
 
   const timeout = 60;
   const priority = 1000;
-  console.log(
+  console.debug(
     "Creating ping task to ensure worker is reachable before taking customer out of current conference"
   );
   await taskService.createTask(

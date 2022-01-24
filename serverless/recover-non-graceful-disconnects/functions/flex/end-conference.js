@@ -16,15 +16,19 @@ exports.handler = TokenValidator(async function (context, event, callback) {
 
   const { ACCOUNT_SID, AUTH_TOKEN } = context;
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
-  const conference = require(Runtime.getFunctions()["services/conference"]
-    .path);
+  const conferenceService = require(Runtime.getFunctions()[
+    "services/conference"
+  ].path);
 
   const { conferenceSid } = event;
 
-  console.log(`Ending conference ${conferenceSid}`);
-  const serviceResponse = await conference.updateConference(conferenceSid, {
-    status: "completed",
-  });
+  console.debug(`Ending conference ${conferenceSid}`);
+  const serviceResponse = await conferenceService.updateConference(
+    conferenceSid,
+    {
+      status: "completed",
+    }
+  );
   if (serviceResponse.conferenceResponse) {
     const conferenceResponse = serviceResponse.conferenceResponse;
     response.setBody({

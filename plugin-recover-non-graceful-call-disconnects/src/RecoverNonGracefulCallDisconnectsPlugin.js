@@ -7,9 +7,9 @@ import { FlexPlugin } from "flex-plugin";
 import { utils } from "./utils";
 import * as listeners from "./listeners";
 import * as notifications from "./notifications";
+import { ReconnectDialog } from "./components/ReconnectDialog";
 
 const PLUGIN_NAME = "RecoverNonGracefulCallDisconnectsPlugin";
-
 export default class RecoverNonGracefulCallDisconnectsPlugin extends FlexPlugin {
   constructor() {
     super(PLUGIN_NAME);
@@ -28,6 +28,7 @@ export default class RecoverNonGracefulCallDisconnectsPlugin extends FlexPlugin 
     this.registerReducers(manager);
     this.registerNotifications();
     this.registerListeners();
+    this.initComponents(flex);
     // TODO: Upon non-graceful call disconnect by agent, show notification, block wrapup
     // TODO: Upon reservation created for the reconnect ping task, accept the task, and
     // complete immediately (TR workspace event listener will react to this and enqueue the stranded call)
@@ -64,5 +65,12 @@ export default class RecoverNonGracefulCallDisconnectsPlugin extends FlexPlugin 
    */
   registerNotifications() {
     notifications.customNotifications();
+  }
+
+  initComponents(flex) {
+    flex.SideNav.Content.add(
+      <ReconnectDialog key="reconnect-dialog" />,
+      { sortOrder: 100 }
+    );
   }
 }

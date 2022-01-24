@@ -12,13 +12,13 @@ export default function customNotifications() {
   const manager = utils.manager;
 
   manager.strings[Constants.FlexNotification.nonGracefulAgentDisconnect] =
-    'A system issue or page refresh disconnected you from the vehicle. Attempting to reconnect...';
+    "A system issue or page refresh disconnected you from the vehicle. Attempting to reconnect...";
 
   manager.strings[Constants.FlexNotification.incomingReconnect] =
     'Ready to reconnect to vehicle. Click "Reconnect" to join the call';
 
-  manager.strings[Constants.FlexNotification.reconnectSuccessful] = 
-    'Connection restored with vehicle';
+  manager.strings[Constants.FlexNotification.reconnectSuccessful] =
+    "Connection restored with vehicle";
 
   Notifications.registerNotification({
     id: Constants.FlexNotification.nonGracefulAgentDisconnect,
@@ -26,7 +26,7 @@ export default function customNotifications() {
     content: Constants.FlexNotification.nonGracefulAgentDisconnect,
     type: NotificationType.error,
     timeout: 0, // Want this to remain open til dimissed
-    icon: "ConnectionError"
+    icon: "ConnectionError",
   });
 
   Notifications.registerNotification({
@@ -52,7 +52,7 @@ export default function customNotifications() {
     closeButton: true,
     content: Constants.FlexNotification.reconnectSuccessful,
     type: NotificationType.success,
-    timeout: 8000 // Want this to disappear
+    timeout: 8000, // Want this to disappear
   });
 }
 
@@ -71,7 +71,7 @@ function reconnectConference(recoveryPingTask) {
   });
 
   // Note: the currently wrapping call task (the disconnected one) will be completed by means of
-  // an event listener on the backend, in response to the ping task being completed 
-  // This is to eliminate risk of another call task being reserved to agent, as it allows the new 
+  // an event listener on the backend, in response to the ping task being completed
+  // This is to eliminate risk of another call task being reserved to agent, as it allows the new
   // reconnect task to reach the task queue before completing the original one.
 }

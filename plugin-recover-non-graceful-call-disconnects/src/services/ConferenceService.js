@@ -59,6 +59,40 @@ class ConferenceService {
     );
     return updateEndConferenceOnExitResult;
   };
+
+  /**
+   * Updates the participant's endConferenceOnExit flag
+   *
+   * @param conferenceSid
+   * @param newConferenceName
+   */
+  static moveParticipantsToNewConference = async (
+    conferenceSid,
+    newConferenceName
+  ) => {
+    console.debug(
+      `moveParticipantsToNewConference: conferenceSid=${conferenceSid}, newConferenceName=${newConferenceName}`
+    );
+
+    const moveParticipantsToNewConferenceUrl = `${utils.baseServerlessUrl}/flex/move-conference-participants-to-new-conference`;
+    const fetchBody = {
+      Token: utils.userToken,
+      conferenceSid,
+      newConferenceName,
+    };
+
+    const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
+    const fetchResponse = await fetch(
+      moveParticipantsToNewConferenceUrl,
+      fetchOptions
+    );
+    const moveParticipantsToNewConferenceResult = await fetchResponse.json();
+    console.debug(
+      "moveParticipantsToNewConference result",
+      moveParticipantsToNewConferenceResult
+    );
+    return moveParticipantsToNewConferenceResult;
+  };
 }
 
 export default ConferenceService;

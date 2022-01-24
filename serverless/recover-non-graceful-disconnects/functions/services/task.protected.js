@@ -13,11 +13,11 @@ const createTask = async (
       timeout,
       priority,
     });
-  console.log(`Created task ${task.sid}`);
+  console.debug(`Created task ${task.sid}`);
 };
 
 const getTask = async (workspaceSid, taskSid) => {
-  console.log(`Fetching ${taskSid} from Taskrouter`);
+  console.debug(`Fetching ${taskSid} from Taskrouter`);
   try {
     const task = await twilioClient.taskrouter
       .workspaces(workspaceSid)
@@ -25,47 +25,34 @@ const getTask = async (workspaceSid, taskSid) => {
       .fetch();
     return task;
   } catch (error) {
-    console.log(`Unable to find ${taskSid}`);
+    console.debug(`Unable to find ${taskSid}`);
     return undefined;
   }
 };
 
-const updateTask = async (
-  workspaceSid,
-  taskSid,
-  payload) => {
-  const task = await twilioClient.taskrouter
-    .workspaces(workspaceSid)
-    .tasks(taskSid)
-    .update(payload);
-  console.log(`Updated task ${task.sid} with payload ${JSON.stringify(payload)}`);
-};
+const updateTask = async (workspaceSid, taskSid, payload) => {
+  console.debug(
+    `Updating task ${taskSid} with payload ${JSON.stringify(payload)}`
+  );
 
-const enqueueCallTask = async (callSid, workflowSid, attributes, priority) => {
-  const twiml = new Twilio.twiml.VoiceResponse();
-  twiml
-    .enqueue({
-      workflowSid,
-    })
-    .task(
-      {
-        priority,
-      },
-      JSON.stringify(attributes)
-    );
-
-  console.log(`Updating call ${callSid} with new TwiML ${twiml.toString()}`);
   try {
-    // TODO: Put in /services
-    await twilioClient.calls(callSid).update({ twiml: twiml.toString() });
+    const task = await twilioClient.taskrouter
+      .workspaces(workspaceSid)
+      .tasks(taskSid)
+      .update(payload);
+    console.debug(
+      `Updated task ${taskSid} successfully`
+    );
+    return task;
   } catch (error) {
-    console.error("Failed to update call", error);
+    console.debug(`Error updating task ${taskSid}`, error);
+    return undefined;
   }
+
 };
 
 module.exports = {
   createTask,
   getTask,
   updateTask,
-  enqueueCallTask,
 };

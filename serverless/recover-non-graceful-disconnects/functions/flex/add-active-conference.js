@@ -19,7 +19,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
 
   const { ACCOUNT_SID, AUTH_TOKEN, SYNC_SERVICE_SID } = context;
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
-  const sync = require(Runtime.getFunctions()["services/sync-map"].path);
+  const syncService = require(Runtime.getFunctions()["services/sync-map"].path);
 
   const {
     conferenceSid,
@@ -54,7 +54,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   };
 
   syncMapPromises.push(
-    sync.addMapItem(
+    syncService.addMapItem(
       SYNC_SERVICE_SID,
       globalSyncMapName,
       conferenceSid,
@@ -63,7 +63,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   );
 
   syncMapPromises.push(
-    sync.addMapItem(
+    syncService.addMapItem(
       SYNC_SERVICE_SID,
       workerSyncMapName,
       conferenceSid,

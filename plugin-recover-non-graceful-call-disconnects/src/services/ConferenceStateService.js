@@ -5,9 +5,6 @@ import { utils } from "../utils";
  * sharing of conference/task details without needing to make frequent Twilio REST API calls.
  */
 class ConferenceStateService {
-
-
-
   /**
    * Adds the initial state of the conference
    */
@@ -20,7 +17,7 @@ class ConferenceStateService {
     customerCallSid,
     workerCallSid,
     workerName,
-    wasGracefulWorkerDisconnect = false,
+    wasGracefulWorkerDisconnect = false
   ) => {
     console.debug("addActiveConference", conferenceSid);
 
@@ -58,7 +55,7 @@ class ConferenceStateService {
     const fetchBody = {
       Token: utils.userToken,
       conferenceSid,
-      workerSid
+      workerSid,
     };
 
     const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);

@@ -23,9 +23,10 @@ export default function hangupCall() {
     ) {
       // Store (in backend) the fact that this was a graceful disconnect
       // Our conference status callback handler can consequently ignore the agent participant-leave event
-      await ConferenceStateService.setGracefulDisconnect(task.conference.conferenceSid,
-        utils.manager.workerClient.sid);
-
+      await ConferenceStateService.setGracefulDisconnect(
+        task.conference.conferenceSid,
+        utils.manager.workerClient.sid
+      );
 
       if (task.conference.liveParticipantCount <= 2) {
         console.debug(
@@ -42,4 +43,3 @@ export default function hangupCall() {
     }
   });
 }
-
