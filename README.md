@@ -1,13 +1,65 @@
-## Known Issues
+# Recover Non-Graceful Call Disconnects
 
-### Flex `endConferenceOnExit` Idiosyncaracies 
-Flex automatically updates `endConferenceOnExit` for the entire task reservation every time a conference update comes in (as well as on task acceptance - when the conference is created). And any time there are 2 or less active participants, it unavoidably sets `endConferenceOnExit` to `true`. This is a safeguard which is valid in most cases (just not this scenario where we are wanting the customer to remain connected to the Twilio conference on non-graceful agent disconnection)
+Toyota, this is built exclusively for you, but some of the verbiage below is to cater to future re-use within our team or beyond.
 
-We've worked around by essentially undoing the OOTB Flex conference participant update when it happens - but it does introduce split-second transient periods where `endConferenceOnExit` will be `true` for the 2 participants in conference (until our reversal API call executes to undo it).
+It's well known that WebRTC doesn't play well with page refreshes. For example, if you refresh your browser when watching a YouTube video, it's impossible to keep viewing or hearing that video during the period where your browser is re-rendering the page and all of its components. That WebRTC socket connection is torn down, and needs to be setup all over again. YouTube optimizes the experience for you, by remembering your position in the video's timeline, and returns you there following the page fully reloading. 
 
-Also, the best place to execute this participant logic is in the exiting ConferenceMonitor of our flex-dialpad-addon-plugin (TODO: insert link to branch here).
+The same applies if you refresh your browser while on an active WebRTC call in Flex. The socket connection is unavoidably torn down (because it only exists within the page that you have essentially just navigated away from). And that socket connection to Twilio's Voice infrastructure is equivalent to your cellphone's GPRS connection to a cell tower - in that it represents the actual phone call for the agent. If you sever that connection, the call is over. And when this happens, Flex will natively transition the associated call task to "wrapping", and the associated voice conference will also end (if only two participants). Not ideal from the point of view of the customer, or the agent.
 
-A Flex feature request has been logged - to ideally allow this Flex behavior to be configurable or overridden.
+But what if we could do what YouTube does - and bring the agent right back to where they were prior to the refresh? i.e. seamlessly reconnect the agent with the customer and any other parties that were in the conference - without the need for manual callbacks or lengthy interruptions to the customer-to-agent interaction. 
+
+That's what this repository aims to offer. There's no escaping the fact that the agent's call leg will drop on a page refresh, but the customized Flex orchestration logic provided here will ensure the customer experiences minimal-to-no interruption while the agent's system recovers from the refresh (or whatever system issue required them to leave the conference non-gracefully).
+
+The use case here is really to offer robust, exceptional quality of service to highly engagement-sensitive customers - such as emergency/SOS calls. 
+
+## What's in the Box?
+* Flex Plugin
+* * Associates our Conference Status Callback Handler with any new voice tasks that arrive - which is the foundation for being able to react to non-graceful call termination
+* * Registers the conference - for any newly accepted task - to our shared state model, for use by that Conference Status Callback Handler
+* * Upon graceful call termination by the agent (i.e. clicking Hangup button), the shared state model is updated to reflect this (and the conference is explicitly ended if there are only two participants)
+* * Upon a page reload (or any time the plugin loads), we look for any Wrapping call tasks that are still present in our shared state model and that weren't gracefully disconnected from by the agent. If this scenario is detected, a UI-blocking modal dialog is presented - to show that the reconnection attempt is in progress, and also to block any ability for the agent to Wrapup/Complete the task
+* * When the "Recovery Ping" task is received, the plugin auto-accepts it - which ultimately triggers our Taskrouter Event Stream Webhook to execute the delivery of the customer call via the "reconnect" call task, directly to the agent
+* * Upon arrival of that reconnect call, the plugin auto-accepts it (which natively establishes a new conference between customer and agent)
+* * Finally, the plugin will call our serverless function to dial in any remaining parties from the disconnected conference, and the modal dialog is closed - allowing the agent to resume the customer interaction
+* Serverless Functions
+* * Utility functions invoked from the Flex plugin to manipulate the conference, the participants, and the shared state (Sync Map in this implementation)
+* Conference Status Callback Handler
+* * Implemented as another Function, this event handler reacts to conference events and maintains shared state (Sync Map) in order to diagnose non-graceful agent call terminations.
+* * Upon non-graceful agent call termination, an announcement is made to the remaining conference participant(s), and a "Recovery Ping" task is sent out to detect if the worker is reachable within a configurable TTL.
+* Taskrouter Event Stream Webhook
+* * Orchestrates the "reconnect" task based on the success/failure of the worker "ping" attempt)
+* * If ping is answered by the disconnected worker, the original customer from the disconnected conference is enqueued via Taskrouter - to the same worker
+* * If ping hits it's TTL, the customer call is enqueued to the same workflow as the original call was handled on, and priority level is elevated
+
+## Dependency on Dialpad Addon 
+This repo pairs with a [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects) of the PS Flex Dialpad Addon Plugin - which essentially makes sure the `endConferenceOnExit` flag for the worker participant is always `false` - even when on a 2-party conference where the flag would traditionally be `true` for both parties. 
+
+This will allow all of our orchestration logic (from this repo) to take care of keeping all non-agent conference participants on the line - and talking - while getting the call task back over to the disconnected agent (or back in queue if they are non-reachable).
+
+See also "Flex `endConferenceOnExit` Idiosyncracies" under "Known Issues" below - as there are some necessary workarounds due to concurrent OOTB Flex orchestration of that same `endConferenceOnExit` flag.
+
+## Known Issues & Improvements Needed
+
+### Flex `endConferenceOnExit` Idiosyncracies 
+Flex automatically updates `endConferenceOnExit` for the entire task reservation every time a conference update comes in (as well as on task acceptance - when the conference is created). And any time there are two or less active participants, it unavoidably sets `endConferenceOnExit` to `true`. This is a safeguard which is valid in most cases (just not this scenario where we are wanting the customer to remain connected to the Twilio conference on non-graceful agent disconnection).
+
+We've worked around by essentially undoing the OOTB Flex conference participant update when it happens - but it does introduce split-second transient periods where `endConferenceOnExit` will be `true` for the two participants in conference (until our explicit API call executes to apply our desired settings).
+
+Also, the best place to execute this participant logic is in the exiting `ConferenceMonitor` of our flex-dialpad-addon-plugin (which we've made available through the above mentioned [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects)).
+
+A Flex feature request has been logged - to ideally allow this native Flex behavior to be configurable or overridden.
+
+### UI-blocking Timeout & Robustification!
+A mechanism still needs to be built whereby the modal dialog used to block the UI can timeout in response to certain factors such as the shared state model indicating that the disconnected conference has since ended (right now this check only happens once on loading the plugin) or the "Recovery Ping" task hitting it's TTL (at which point the reconnect call task goes to the queue)
+
+### Internal Transfers
+The current shared state model (keyed on Conference SID) may not play very well with internal transfers - as it could result in two participants concurrently being seen as the "worker". Need to build some robustness around this and test it first and foremost. It might be OK!
+
+### Edge Cases
+Lots of testing will reveal these. The current state is largely focused on the happy path, where remaining participants are active calls (not on hold) and nobody decides to intervene and drop from the conference during the reconnect orchestration. 
+
+It also assumes a single page refresh by the agent. What if they refresh while the modal dialog is active and the reconnect process is happening? 
+
 
 ## Pre-Requisites
 * An active Twilio account with Flex provisioned. Refer to the [Flex Quickstart](https://www.twilio.com/docs/flex/quickstart/flex-basics#sign-up-for-or-sign-in-to-twilio-and-create-a-new-flex-project") to create one.
@@ -106,17 +158,17 @@ This section outlines the required configuration in your Twilio Flex account for
 
 This is needed for the handling of the task events - in order to detect when the ping task is successful (`reservation.accepted`), or fails (`task.canceled`). It's also used to orchestrate the optimal timing for delivering the reconnect task back to the agent, by waiting for the `task-queue.entered` event - at which point it completes the disconnected task and so opens up voice channel capacity for the target worker.
 
-1: Create a Taskrouter Event Stream webhook sink via CLI
+1. Create a Taskrouter Event Stream webhook sink via CLI
 
 e.g.
 ```
 twilio api:events:v1:sinks:create --description 'Recover Non-Graceful Disconnects - TR Event Stream Webhook Sink' --sink-configuration '{"destination":"https://recover-non-graceful-call-disconnects-1234-dev.twil.io/task-event-handler","method":"POST","batch_events":true}' --sink-type webhook
-````
-(replace the Domain  with the value you copied in the Serverless Functions Deploy section above)
+```
+(replace the Domain with the value you copied in the Serverless Functions Deploy section above)
 
 NOTE the generated SID for the Sink
 
-2. Create an Event Stream Subscription for the Webhook Sink
+1. Create an Event Stream Subscription for the Webhook Sink
 
 e.g.
 ```
@@ -128,7 +180,11 @@ twilio api:events:v1:subscriptions:create --description 'Recover Non-Graceful Di
 ## Twilio Flex Plugins
 This section will go through the steps to prepare the Flex plugins in this sample solution for use in your development environment and deployment to your Flex account.
 
-### Plugin Description
+### Dependency
+Make sure you have deployed (or ran `twilio flex:plugins:start` once locally - if testing locally - to register the plugin), the required [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects) of the Flex Dialpad Addon plugin - to properly handle the setting of the `endConferenceOnExit` flag during external transfers.
+
+At the time of writing, there are no additional config steps necessary aside from the standard steps required for that plugin and serverless bundle.
+### Plugin Prep/Config
 
 
 1. Navigate to the `plugin-recover-non-graceful-call-disconnects` directory, install dependencies, copy the `env.sample` and `public/appConfig.example.js` files

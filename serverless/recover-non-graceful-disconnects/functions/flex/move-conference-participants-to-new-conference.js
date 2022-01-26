@@ -49,8 +49,8 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     const { callSid, label, endConferenceOnExit } = participant;
     // Dial them in one by one.
 
-    // TODO: Remove this call fetch - using it to log status prior to running Twiml
     // Make sure call is in right status to be updated (customer might've dropped)
+    // TODO: Speed could be optimized further by removing this fetch, and just swallow any status-related errors later
     const fetchServiceResponse = await callService.fetchCall(callSid);
     if (
       !fetchServiceResponse.callResponse ||
@@ -64,11 +64,12 @@ exports.handler = TokenValidator(async function (context, event, callback) {
       continue;
     }
 
-    // TODO: Add some announcement perhaps prior to this, and react to the announcement completed event
-    // For now (PoC), just dial em in ASAP
+    // Dial em in if status is OK!
     console.debug(
       `Moving participant ${callSid} (label: '${label}') to new conference name ${newConferenceName}'; endConferenceOnExit: ${endConferenceOnExit})`
     );
+    // TODO: Speed optimization - remove await, and fill up a promises array instead, then 
+    // Promise.all()
     const dialServiceResponse = await callService.dialCallIntoConference(
       callSid,
       newConferenceName,
