@@ -1,4 +1,4 @@
-import { Actions, Notifications, TaskHelper } from "@twilio/flex-ui";
+import { Actions, TaskHelper } from "@twilio/flex-ui";
 import { ConferenceService } from "../services";
 
 import { utils, Constants } from "../utils";

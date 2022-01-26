@@ -1,7 +1,5 @@
 import {
   Actions,
-  flexStoreEnhancer,
-  Notifications,
   TaskHelper,
 } from "@twilio/flex-ui";
 import { Constants, utils } from "../utils";
@@ -93,12 +91,6 @@ function initializeReservation(reservation) {
       });
     }, Constants.SLOW_MODE ? 3000 : 0);
 
-
-    // Notifications.showNotification(
-    //   Constants.FlexNotification.incomingReconnect,
-    //   { recoveryPingTask: task }
-    // );
-
     return;
   }
 
@@ -144,9 +136,6 @@ function initializeReservation(reservation) {
         },
       });
 
-      // Notifications.showNotification(
-      //   Constants.FlexNotification.nonGracefulAgentDisconnect
-      // );
       return;
     }
 
@@ -241,7 +230,7 @@ async function reservationAccepted(reservation) {
       false
     );
 
-    // If this is a reconnect task, show the notification and bring in the others!
+    // If this is a reconnect task, update the modal dialog message and bring in the others!
     if (task.attributes.isReconnect === true) {
       utils.manager.store.dispatch(
         DisconnectedTaskActions.handleReconnectSuccess()
@@ -268,23 +257,8 @@ async function reservationAccepted(reservation) {
             name: "ReconnectDialog",
             state: { isOpen: false },
           });
-        }, 2500);
+        }, 2000);
       }, Constants.SLOW_MODE ? 2000 : 0);
-
-
-
-
-
-      // Notifications.showNotification(
-      //   Constants.FlexNotification.reconnectSuccessful
-      // );
-      // Notifications.dismissNotificationById(
-      //   Constants.FlexNotification.nonGracefulAgentDisconnect
-      // );
-      // Notifications.dismissNotificationById(
-      //   Constants.FlexNotification.incomingReconnect
-      // );
-
 
 
       Actions.invokeAction("SelectTask", {
