@@ -36,7 +36,7 @@ This repo pairs with a [branch](https://github.com/twilio-professional-services/
 
 This will allow all of our orchestration logic (from this repo) to take care of keeping all non-agent conference participants on the line - and talking - while getting the call task back over to the disconnected agent (or back in queue if they are non-reachable).
 
-See also "Flex `endConferenceOnExit` Idiosyncracies" under "Known Issues" below - as there are some necessary workarounds due to concurrent OOTB Flex orchestration of that same `endConferenceOnExit` flag.
+See also "Flex `endConferenceOnExit` Idiosyncracies" under "Known Issues & Improvements Needed" below - as there are some necessary workarounds due to concurrent OOTB Flex orchestration of that same `endConferenceOnExit` flag.
 
 ## Known Issues & Improvements Needed
 
@@ -140,7 +140,7 @@ This section outlines the required configuration in your Twilio Flex account for
 
 ### TaskRouter Workflows
 1. Navigate to TaskRouter -> Workspaces -> Flex Task Assignment -> Workflows
-2. Create a new Workflow called "Recovery Ping"
+1. Create a new Workflow called "Recovery Ping"
     1. Set the Task Reservation Timeout to 15 seconds (to minimize time spent waiting for an agent's UI to respond to a ping)
     1. Add a Filter named "Ping Disconnected Agent"
         1. Set the "Matching Tasks" expression to:
@@ -159,28 +159,24 @@ This section outlines the required configuration in your Twilio Flex account for
 This is needed for the handling of the task events - in order to detect when the ping task is successful (`reservation.accepted`), or fails (`task.canceled`). It's also used to orchestrate the optimal timing for delivering the reconnect task back to the agent, by waiting for the `task-queue.entered` event - at which point it completes the disconnected task and so opens up voice channel capacity for the target worker.
 
 1. Create a Taskrouter Event Stream webhook sink via CLI
+    e.g.
+    ```
+    twilio api:events:v1:sinks:create --description 'Recover Non-Graceful Disconnects - TR Event Stream Webhook Sink' --sink-configuration '{"destination":"https://recover-non-graceful-call-disconnects-1234-dev.twil.io/task-event-handler","method":"POST","batch_events":true}' --sink-type webhook
+    ```
+    (replace the Domain with the value you copied in the Serverless Functions Deploy section above)
 
-e.g.
-```
-twilio api:events:v1:sinks:create --description 'Recover Non-Graceful Disconnects - TR Event Stream Webhook Sink' --sink-configuration '{"destination":"https://recover-non-graceful-call-disconnects-1234-dev.twil.io/task-event-handler","method":"POST","batch_events":true}' --sink-type webhook
-```
-(replace the Domain with the value you copied in the Serverless Functions Deploy section above)
-
-NOTE the generated SID for the Sink
-
+    NOTE the generated SID for the Sink
 1. Create an Event Stream Subscription for the Webhook Sink
-
-e.g.
-```
-twilio api:events:v1:subscriptions:create --description 'Recover Non-Graceful Disconnects - TR Event Stream Subscription to reservation.accepted, task.canceled, task-queue.entered' --sink-sid DGXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX --types '{"type":"com.twilio.taskrouter.reservation.accepted","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task.canceled","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task-queue.entered","schema_version":1}'
-```
-(populate the `--sink-sid` value with the SID generated in previous step)
-
+    e.g.
+    ```
+    twilio api:events:v1:subscriptions:create --description 'Recover Non-Graceful Disconnects - TR Event Stream Subscription to reservation.accepted, task.canceled, task-queue.entered' --sink-sid DGXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX --types '{"type":"com.twilio.taskrouter.reservation.accepted","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task.canceled","schema_version":1}' --types '{"type":"com.twilio.taskrouter.task-queue.entered","schema_version":1}'
+    ```
+    (populate the `--sink-sid` value with the SID generated in previous step)
 
 ## Twilio Flex Plugins
 This section will go through the steps to prepare the Flex plugins in this sample solution for use in your development environment and deployment to your Flex account.
 
-### Dependency
+### Flex Dialpad Addon Plugin Dependency
 Make sure you have deployed (or ran `twilio flex:plugins:start` once locally - if testing locally - to register the plugin), the required [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects) of the Flex Dialpad Addon plugin - to properly handle the setting of the `endConferenceOnExit` flag during external transfers.
 
 At the time of writing, there are no additional config steps necessary aside from the standard steps required for that plugin and serverless bundle.
