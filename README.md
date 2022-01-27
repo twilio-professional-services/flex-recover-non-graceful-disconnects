@@ -200,9 +200,10 @@ At the time of writing, there are no additional config steps necessary aside fro
 
 ### Development
 
-1. Navigate to `plugin-recover-non-graceful-call-disconnects` and start the plugin
+1. Navigate to `plugin-recover-non-graceful-call-disconnects` and start the plugin. NOTE: You'll need to make sure it also starts the dialpad addon plugin - either via referencing a remotely deployed plugin name, or more likely a locally registered plugin - which is the example below. Refer to the [Run Multiple Plugins Locally Using the Flex Plugins CLI](https://www.twilio.com/docs/flex/developer/plugins/cli/run-multiple-plugins) documentation for more information.
+
     ```bash
-    twilio flex:plugins:start
+    twilio flex:plugins:start --name flex-dialpad-addon-plugin
     ```
 
 Once you login to Flex running on your local dev environment at `localhost:3000`, the Flex UI will load. At that point you are ready to test and further develop the Flex plugins.
