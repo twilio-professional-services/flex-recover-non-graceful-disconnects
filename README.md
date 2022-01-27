@@ -1,7 +1,5 @@
 # Recover Non-Graceful Call Disconnects
 
-Toyota, this is built exclusively for you, but some of the verbiage below is to cater to future re-use within our team or beyond.
-
 It's well known that WebRTC doesn't play well with page refreshes. For example, if you refresh your browser when watching a YouTube video, it's impossible to keep viewing or hearing that video during the period where your browser is re-rendering the page and all of its components. That WebRTC socket connection is torn down, and needs to be setup all over again. YouTube optimizes the experience for you, by remembering your position in the video's timeline, and returns you there following the page fully reloading. 
 
 The same applies if you refresh your browser while on an active WebRTC call in Flex. The socket connection is unavoidably torn down (because it only exists within the page that you have essentially just navigated away from). And that socket connection to Twilio's Voice infrastructure is equivalent to your cellphone's GPRS connection to a cell tower - in that it represents the actual phone call for the agent. If you sever that connection, the call is over. And when this happens, Flex will natively transition the associated call task to "wrapping", and the associated voice conference will also end (if only two participants). Not ideal from the point of view of the customer, or the agent.
