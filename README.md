@@ -9,25 +9,24 @@ But what if we could do what YouTube does - and bring the agent right back to wh
 That's what this repository aims to offer. There's no escaping the fact that the agent's call leg will drop on a page refresh, but the customized Flex orchestration logic provided here will ensure the customer experiences minimal-to-no interruption while the agent's system recovers from the refresh (or whatever system issue required them to leave the conference non-gracefully).
 
 The use case here is really to offer robust, exceptional quality of service to highly engagement-sensitive customers - such as emergency/SOS calls. 
-
 ## What's in the Box?
 * Flex Plugin
-* * Associates our Conference Status Callback Handler with any new voice tasks that arrive - which is the foundation for being able to react to non-graceful call termination
-* * Registers the conference - for any newly accepted task - to our shared state model, for use by that Conference Status Callback Handler
-* * Upon graceful call termination by the agent (i.e. clicking Hangup button), the shared state model is updated to reflect this (and the conference is explicitly ended if there are only two participants)
-* * Upon a page reload (or any time the plugin loads), we look for any Wrapping call tasks that are still present in our shared state model and that weren't gracefully disconnected from by the agent. If this scenario is detected, a UI-blocking modal dialog is presented - to show that the reconnection attempt is in progress, and also to block any ability for the agent to Wrapup/Complete the task
-* * When the "Recovery Ping" task is received, the plugin auto-accepts it - which ultimately triggers our Taskrouter Event Stream Webhook to execute the delivery of the customer call via the "reconnect" call task, directly to the agent
-* * Upon arrival of that reconnect call, the plugin auto-accepts it (which natively establishes a new conference between customer and agent)
-* * Finally, the plugin will call our serverless function to dial in any remaining parties from the disconnected conference, and the modal dialog is closed - allowing the agent to resume the customer interaction
+    * Associates our Conference Status Callback Handler with any new voice tasks that arrive - which is the foundation for being able to react to non-graceful call termination
+    * Registers the conference - for any newly accepted task - to our shared state model, for use by that Conference Status Callback Handler
+    * Upon graceful call termination by the agent (i.e. clicking Hangup button), the shared state model is updated to reflect this (and the conference is explicitly ended if there are only two participants)
+    * Upon a page reload (or any time the plugin loads), we look for any Wrapping call tasks that are still present in our shared state model and that weren't gracefully disconnected from by the agent. If this scenario is detected, a UI-blocking modal dialog is presented - to show that the reconnection attempt is in progress, and also to block any ability for the agent to Wrapup/Complete the task
+    * When the "Recovery Ping" task is received, the plugin auto-accepts it - which ultimately triggers our Taskrouter Event Stream Webhook to execute the delivery of the customer call via the "reconnect" call task, directly to the agent
+    * Upon arrival of that reconnect call, the plugin auto-accepts it (which natively establishes a new conference between customer and agent)
+    * Finally, the plugin will call our serverless function to dial in any remaining parties from the disconnected conference, and the modal dialog is closed - allowing the agent to resume the customer interaction
 * Serverless Functions
-* * Utility functions invoked from the Flex plugin to manipulate the conference, the participants, and the shared state (Sync Map in this implementation)
+    * Utility functions invoked from the Flex plugin to manipulate the conference, the participants, and the shared state (Sync Map in this implementation)
 * Conference Status Callback Handler
-* * Implemented as another Function, this event handler reacts to conference events and maintains shared state (Sync Map) in order to diagnose non-graceful agent call terminations.
-* * Upon non-graceful agent call termination, an announcement is made to the remaining conference participant(s), and a "Recovery Ping" task is sent out to detect if the worker is reachable within a configurable TTL.
+    * Implemented as another Function, this event handler reacts to conference events and maintains shared state (Sync Map) in order to diagnose non-graceful agent call terminations.
+    * Upon non-graceful agent call termination, an announcement is made to the remaining conference participant(s), and a "Recovery Ping" task is sent out to detect if the worker is reachable within a configurable TTL.
 * Taskrouter Event Stream Webhook
-* * Orchestrates the "reconnect" task based on the success/failure of the worker "ping" attempt)
-* * If ping is answered by the disconnected worker, the original customer from the disconnected conference is enqueued via Taskrouter - to the same worker
-* * If ping hits it's TTL, the customer call is enqueued to the same workflow as the original call was handled on, and priority level is elevated
+    * Orchestrates the "reconnect" task based on the success/failure of the worker "ping" attempt)
+    * If ping is answered by the disconnected worker, the original customer from the disconnected conference is enqueued via Taskrouter - to the same worker
+    * If ping hits it's TTL, the customer call is enqueued to the same workflow as the original call was handled on, and priority level is elevated
 
 ## Dependency on Dialpad Addon 
 This repo pairs with a [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects) of the PS Flex Dialpad Addon Plugin - which essentially makes sure the `endConferenceOnExit` flag for the worker participant is always `false` - even when on a 2-party conference where the flag would traditionally be `true` for both parties. 
