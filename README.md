@@ -57,6 +57,8 @@ Lots of testing will reveal these. The current state is largely focused on the h
 
 It also assumes a single page refresh by the agent. What if they refresh while the modal dialog is active and the reconnect process is happening? 
 
+### Reporting Impact
+TBD. Group the calls under conversation.
 
 ## Pre-Requisites
 * An active Twilio account with Flex provisioned. Refer to the [Flex Quickstart](https://www.twilio.com/docs/flex/quickstart/flex-basics#sign-up-for-or-sign-in-to-twilio-and-create-a-new-flex-project") to create one.

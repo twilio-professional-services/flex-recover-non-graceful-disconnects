@@ -1,5 +1,6 @@
 import {
   Actions,
+  Notifications,
   TaskHelper,
 } from "@twilio/flex-ui";
 import { Constants, utils } from "../utils";
@@ -21,6 +22,7 @@ export default function reservationCreated() {
 
   utils.manager.events.addListener("pluginsLoaded", async () => {
     await ConferenceSyncState.initialize();
+
 
     // In addition to the reservationCreated listener logic, we need to also account for the fact that
     // the UI may not actually receive this event (e.g if it fires during a page refresh, or if browser
@@ -75,21 +77,11 @@ function initializeReservation(reservation) {
       DisconnectedTaskActions.handleRecoveryPing()
     );
     
+    Actions.invokeAction("AcceptTask", {
+      sid: reservationSid,
+    });
 
-    // Demonstrative "SLOW_MODE" delay option
-    setTimeout(() => {
-      Actions.invokeAction("AcceptTask", {
-        sid: reservationSid,
-      });
-
-      Actions.invokeAction("SetComponentState", {
-        name: "ReconnectDialog",
-        state: {
-          isOpen: true,
-          message: "Reconnecting you with vehicle now...",
-        },
-      });
-    }, Constants.SLOW_MODE ? 3000 : 0);
+    showReconnectDialog("Reconnecting you with vehicle now...");
 
     return;
   }
@@ -118,35 +110,65 @@ function initializeReservation(reservation) {
           `Conference state not found for this task. It may have ended cleanly and been deleted. All good.`
         );
         return;
+      } else {
+        const timeDiff = (new Date() - Date.parse(currentConferenceState.disconnectedTime)) / 1000;
+        if (timeDiff > 20) {
+          console.debug(
+            `It's been over ${timeDiff} seconds since the disconnection. This is beyond the TTL of the ping task, so assume it's gone elsewhere at this point`
+          );
+          return;
+        }
       }
+
       console.debug(
         `Conference was non-gracefully disconnected. Prepare for reconnect`
       );
+
+      if (reservation.addListener) {
+        console.debug(
+          `Reservation completed - hiding dialog`
+        );
+        reservation.addListener("completed", () => { 
+          closeReconnectDialog();
+        });
+      }
       
       // This action will show the modal dialog - essentially blocking UI input
       utils.manager.store.dispatch(
         DisconnectedTaskActions.setDisconnectedTask(task.taskSid)
       );
 
-      Actions.invokeAction("SetComponentState", {
-        name: "ReconnectDialog",
-        state: {
-          isOpen: true,
-          message: "Disconnected from vehicle. Awaiting reconnection...",
-        },
-      });
+      showReconnectDialog("Disconnected from vehicle. Awaiting reconnection...");
 
       return;
     }
 
-    if (task.attributes.isReconnect === true && Constants.AUTO_ANSWER_RECONNECT_TASKS) {
-      console.debug("Auto answering reconnect call!");
-      // Demonstrative "SLOW_MODE" delay option
-      setTimeout(() => {
-        Actions.invokeAction("AcceptTask", {
-          sid: reservation.sid,
-        });
-      }, Constants.SLOW_MODE ? 3000 : 0);
+    if (task.attributes.isReconnect) {
+      console.debug("Reconnect call!");
+
+      if (task.attributes.disconnectedWorkerSid === utils.manager.workerClient.sid) {
+        console.debug("Reconnect call is mine!");
+        // Need to auto-answer through here (or through existing auto-answer logic) - since modal dialog 
+        // blocks any input.
+        if (Constants.AUTO_ANSWER_RECONNECT_TASKS) {
+          console.debug("Auto answering reconnect call!");
+
+          Actions.invokeAction("AcceptTask", {
+            sid: reservation.sid,
+          });
+        }
+
+      } else {
+        console.debug(`Reconnect call is for another worker: ${task.attributes.disconnectedWorkerSid}`);
+        // Show notification
+        Notifications.showNotification(
+          Constants.FlexNotification.incomingReconnectTaskFromOtherWorker, 
+          { 
+            disconnectedWorkerName: task.attributes.disconnectedWorkerName,
+            disconnectedTime: new Date(task.attributes.disconnectedTime).toLocaleTimeString()
+          }
+        );
+      }    
 
 
     }
@@ -154,15 +176,6 @@ function initializeReservation(reservation) {
   }
 }
 
-function stopReservationListeners(reservation) {
-  const listeners = reservationListeners.get(reservation);
-  if (listeners) {
-    listeners.forEach((listener) => {
-      reservation.removeListener(listener.event, listener.callback);
-    });
-    reservationListeners.delete(reservation);
-  }
-}
 
 function isRecoveryPingTask(task) {
   return task.workflowName === "Recovery Ping";
@@ -232,34 +245,25 @@ async function reservationAccepted(reservation) {
 
     // If this is a reconnect task, update the modal dialog message and bring in the others!
     if (task.attributes.isReconnect === true) {
+      console.debug("It's a reconnect task");
       utils.manager.store.dispatch(
         DisconnectedTaskActions.handleReconnectSuccess()
       );
 
-      Actions.invokeAction("SetComponentState", {
-        name: "ReconnectDialog",
-        state: {
-          isOpen: true,
-          message: "Reconnected with vehicle! \n\nAny other participants will be patched in now...",
-        },
-      });
-
-      // Demonstrative "SLOW_MODE" delay option
-      setTimeout(async () => {
-        ConferenceService.moveParticipantsToNewConference(
-          task.attributes.disconnectedConferenceSid,
-          task.conference.sid // This is actually the taskSid (used as name of conference)
-        );
+      if (task.attributes.disconnectedWorkerSid == utils.manager.workerClient.sid) {
+        // If the disconnected agent was me, then we use the dialog
+        showReconnectDialog("Reconnected with vehicle!");
 
         // Do a slow close of the dialog - to give agent a chance to see it!
         setTimeout(() => {
-          Actions.invokeAction("SetComponentState", {
-            name: "ReconnectDialog",
-            state: { isOpen: false },
-          });
+          closeReconnectDialog();
         }, 2000);
-      }, Constants.SLOW_MODE ? 2000 : 0);
+      }
 
+      ConferenceService.moveParticipantsToNewConference(
+        task.attributes.disconnectedConferenceSid,
+        task.conference.sid // This is actually the taskSid (used as name of conference)
+      );
 
       Actions.invokeAction("SelectTask", {
         sid: reservation.sid,
@@ -341,4 +345,18 @@ function isTaskActive(task) {
   } else {
     return utils.manager.workerClient.reservations.has(reservationSid);
   }
+}
+
+function showReconnectDialog(message) {
+  Actions.invokeAction("SetComponentState", {
+    name: "ReconnectDialog",
+    state: { isOpen: true, message },
+  });
+}
+
+function closeReconnectDialog() {
+  Actions.invokeAction("SetComponentState", {
+    name: "ReconnectDialog",
+    state: { isOpen: false },
+  });
 }

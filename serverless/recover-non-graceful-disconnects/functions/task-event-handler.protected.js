@@ -69,10 +69,12 @@ exports.handler = async function (context, event, callback) {
   if (isRelevantPingTaskEvent(context, event)) {
     // We know ping task was accepted or canceled
 
-    // Complete the ping task
-    await taskService.updateTask(WORKSPACE_SID, taskSid, {
-      assignmentStatus: "completed",
-    });
+    if (eventType === 'reservation.accepted') {
+      // Complete the ping task
+      await taskService.updateTask(WORKSPACE_SID, taskSid, {
+        assignmentStatus: "completed",
+      });
+    }
 
     // So go ahead and enqueue new reconnect call task for the disconnected customer
 
@@ -115,6 +117,8 @@ exports.handler = async function (context, event, callback) {
       newAttributes,
       priority
     );
+
+    
   }
 
   if (isRelevantVoiceTaskEvent(event)) {

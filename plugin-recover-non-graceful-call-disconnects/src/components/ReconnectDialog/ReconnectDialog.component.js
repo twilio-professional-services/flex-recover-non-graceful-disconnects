@@ -2,31 +2,26 @@ import * as React from "react";
 import { connect } from "react-redux";
 import { Actions, withTheme } from "@twilio/flex-ui";
 //import { namespace } from '../../state';
-import Dialog from "@material-ui/core/Dialog";
-import DialogContent from "@material-ui/core/DialogContent";
-import DialogContentText from "@material-ui/core/DialogContentText";
+import { Dialog, DialogContent, DialogContentText } from "@material-ui/core";
 import { Constants, utils } from "../../utils";
+import { ReconnectDialogStyles } from "./ReconnectDialog.style";
 
 const manager = utils.manager;
 
 class ReconnectDialog extends React.Component {
-  //workerListener = undefined;
 
   constructor(props) {
     super(props);
-    //this.workerListener = WorkerListener.create();
   }
 
   state = {};
 
   componentDidMount() {
-    //this.workerListener.workersSearch();
   }
 
   componentDidUpdate() {}
 
   componentWillUnmount() {
-    //this.workerListener.unsubscribe();
   }
 
   handleClose = (event, reason) => {
@@ -42,11 +37,6 @@ class ReconnectDialog extends React.Component {
     });
   };
 
-  handleChange = (e) => {
-    // const value = e.target.value;
-    // console.log('Selected Worker: ', value);
-    // this.setState({ selectedWorker: value });
-  };
 
   render() {
     return (
@@ -55,14 +45,14 @@ class ReconnectDialog extends React.Component {
         onClose={this.handleClose}
         disableEscapeKeyDown
       >
-        <DialogContent>
-          <DialogContentText>{this.props.message}</DialogContentText>
-          
-          <DialogContentText>{Constants.SLOW_MODE && <br/>}</DialogContentText>
+        <ReconnectDialogStyles>
+          <DialogContent>
+            <div className="Twilio dialog-text">{this.props.message}</div>
+            
+            <div className="Twilio dialog-text-demo-note">{Constants.SLOW_MODE && "** DEMO MODE: DELAYS ARE INTENDED **"}</div>
 
-          <DialogContentText>{Constants.SLOW_MODE && "** DEMO MODE: DELAYS ARE INTENDED **"}</DialogContentText>
-
-        </DialogContent>
+          </DialogContent>
+        </ReconnectDialogStyles>
       </Dialog>
     );
   }

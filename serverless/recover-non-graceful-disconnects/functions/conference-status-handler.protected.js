@@ -111,12 +111,14 @@ exports.handler = async function (context, event, callback) {
   // Bail out early if it's not an event we care about
   if (
     statusCallbackEvent !== "participant-leave" &&
-    statusCallbackEvent !== "participant-modify"
+    statusCallbackEvent !== "participant-modify" // EDIT: Buggy/doesn't work
   ) {
     return callback(null, {});
   }
 
   if (statusCallbackEvent === "participant-modify") {
+    // EDIT: Not working due to Flex Orchestration bug (see README)
+
     // We're purely interested in undoing any Flex OOTB manipulation of endConferenceOnExit.
     // For purposes of this agent disconnect use case, we care about worker only, and ensuring
     // their endConferenceOnExit flag is false (to ensure others get to hang out in conference together
@@ -204,6 +206,10 @@ exports.handler = async function (context, event, callback) {
     fullAnnouncementPath
   );
 
+  // Make sure endConferenceOnExit is set appropriately for remaining participants - to avoid anyone being left alone when someone else drops
+
+  //updateEndConferenceOnExitFlags();
+
   // Update the sync map
   const syncMapItemData = {
     ...globalActiveConference,
@@ -245,7 +251,7 @@ exports.handler = async function (context, event, callback) {
     disconnectedTime: syncMapItemData.disconnectedTime,
   };
 
-  const timeout = 60;
+  const timeout = 15;
   const priority = 1000;
   console.debug(
     "Creating ping task to ensure worker is reachable before taking customer out of current conference"
