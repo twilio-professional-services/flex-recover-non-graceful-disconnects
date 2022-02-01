@@ -207,7 +207,8 @@ exports.handler = async function (context, event, callback) {
   );
 
   // Make sure endConferenceOnExit is set appropriately for remaining participants - to avoid anyone being left alone when someone else drops
-
+  // TODO: Evaluate if we even need to. E.g. if call drops from 3 to 2 participants (and agent is gone), do we even need to set the 3rd party to 
+  // true? Worst case - vehicle remains in conf alone while reconnect haoppens.
   //updateEndConferenceOnExitFlags();
 
   // Update the sync map

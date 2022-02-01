@@ -1,11 +1,10 @@
 import {
   Actions,
-  Notifications,
   TaskHelper,
 } from "@twilio/flex-ui";
 import { Constants, utils } from "../utils";
 import { ConferenceService, ConferenceStateService } from "../services";
-import { ConferenceSyncState, DisconnectedTaskActions } from "../states";
+import { DisconnectedTaskActions } from "../states";
 
 const reservationListeners = new Map();
 
@@ -21,8 +20,6 @@ export default function reservationCreated() {
   });
 
   utils.manager.events.addListener("pluginsLoaded", async () => {
-    await ConferenceSyncState.initialize();
-
 
     // In addition to the reservationCreated listener logic, we need to also account for the fact that
     // the UI may not actually receive this event (e.g if it fires during a page refresh, or if browser
@@ -51,7 +48,7 @@ export default function reservationCreated() {
   });
 }
 
-function initializeReservation(reservation) {
+async function initializeReservation(reservation) {
   console.debug("initializeReservation", reservation);
 
   if (reservation.addListener) {
@@ -96,7 +93,9 @@ function initializeReservation(reservation) {
       console.debug(
         `Looking up current state of conference for wrapping task ${task.taskSid}`
       );
-      const currentConferenceState = ConferenceSyncState.currentStateByTask(
+      // TODO: Can't I just find the conf sid somewhere?
+      const currentConferenceState = await ConferenceStateService.getConferenceStateByTaskSid(
+        utils.manager.workerClient.sid,
         task.taskSid
       );
       if (
@@ -158,17 +157,7 @@ function initializeReservation(reservation) {
           });
         }
 
-      } else {
-        console.debug(`Reconnect call is for another worker: ${task.attributes.disconnectedWorkerSid}`);
-        // Show notification
-        Notifications.showNotification(
-          Constants.FlexNotification.incomingReconnectTaskFromOtherWorker, 
-          { 
-            disconnectedWorkerName: task.attributes.disconnectedWorkerName,
-            disconnectedTime: new Date(task.attributes.disconnectedTime).toLocaleTimeString()
-          }
-        );
-      }    
+      }  
 
 
     }
@@ -250,15 +239,20 @@ async function reservationAccepted(reservation) {
         DisconnectedTaskActions.handleReconnectSuccess()
       );
 
-      if (task.attributes.disconnectedWorkerSid == utils.manager.workerClient.sid) {
-        // If the disconnected agent was me, then we use the dialog
-        showReconnectDialog("Reconnected with vehicle!");
-
-        // Do a slow close of the dialog - to give agent a chance to see it!
-        setTimeout(() => {
-          closeReconnectDialog();
-        }, 2000);
+      let message = "Reconnected with vehicle!";
+      if (task.attributes.disconnectedWorkerSid != utils.manager.workerClient.sid) {
+        const disconnectedWorkerName = task.attributes.disconnectedWorkerName;
+        const disconnectedTime = new Date(task.attributes.disconnectedTime).toLocaleTimeString();
+        message = `Reconnected with vehicle!\n\nAgent, ${disconnectedWorkerName} encountered system issues at ${disconnectedTime}`;
       }
+
+      // If the disconnected agent was me, then we use the dialog
+      showReconnectDialog(message);
+
+      // Do a slow close of the dialog - to give agent a chance to see it!
+      setTimeout(() => {
+        closeReconnectDialog();
+      }, 3000);
 
       ConferenceService.moveParticipantsToNewConference(
         task.attributes.disconnectedConferenceSid,

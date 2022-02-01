@@ -47,7 +47,7 @@ Also, the best place to execute this participant logic is in the exiting `Confer
 A Flex feature request has been logged - to ideally allow this native Flex behavior to be configurable or overridden.
 
 ### UI-blocking Timeout & Robustification!
-A mechanism still needs to be built whereby the modal dialog used to block the UI can timeout in response to certain factors such as the shared state model indicating that the disconnected conference has since ended (right now this check only happens once on loading the plugin) or the "Recovery Ping" task hitting it's TTL (at which point the reconnect call task goes to the queue)
+A mechanism still needs to be built whereby the modal dialog used to block the UI can timeout in response to certain factors such as the shared state model indicating that the disconnected conference has since ended (right now this check only happens once on loading the plugin) or the "Recovery Ping" task hitting it's TTL (at which point the reconnect call task goes to the queue).
 
 ### Internal Transfers
 The current shared state model (keyed on Conference SID) may not play very well with internal transfers - as it could result in two participants concurrently being seen as the "worker". Need to build some robustness around this and test it first and foremost. It might be OK!

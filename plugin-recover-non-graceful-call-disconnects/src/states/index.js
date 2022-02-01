@@ -1,6 +1,3 @@
-import ConferenceSyncState from "./ConferenceSyncState";
-export { ConferenceSyncState as ConferenceSyncState };
-
 import { combineReducers } from "redux";
 import {
   reduce as disconnectedTaskReducer,

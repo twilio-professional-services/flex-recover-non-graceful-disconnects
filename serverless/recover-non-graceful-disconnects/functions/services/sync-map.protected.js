@@ -42,6 +42,18 @@ const getMapItem = async (serviceSid, mapName, key) => {
   } catch (error) {}
 };
 
+const getAllMapItems = async (serviceSid, mapName) => {
+  try {
+    const response = await twilioClient.sync
+      .services(serviceSid)
+      .syncMaps(mapName)
+      .syncMapItems
+      .list({limit: 20});
+    const result = response ? response : undefined;
+    return result;
+  } catch (error) {}
+};
+
 const deleteMapItem = async (serviceSid, mapName, key) => {
   try {
     await twilioClient.sync
@@ -74,6 +86,7 @@ module.exports = {
   createSyncMap,
   addMapItem,
   getMapItem,
+  getAllMapItems,
   deleteMapItem,
   updateMapItem,
 };

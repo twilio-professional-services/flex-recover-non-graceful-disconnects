@@ -6,7 +6,6 @@ import { FlexPlugin } from "flex-plugin";
 
 import { utils } from "./utils";
 import * as listeners from "./listeners";
-import * as notifications from "./notifications";
 import { ReconnectDialog } from "./components/ReconnectDialog";
 
 const PLUGIN_NAME = "RecoverNonGracefulCallDisconnectsPlugin";
@@ -27,7 +26,6 @@ export default class RecoverNonGracefulCallDisconnectsPlugin extends FlexPlugin 
   init(flex, manager) {
     this.registerReducers(manager);
     this.registerListeners();
-    this.registerNotifications();
     this.initComponents(flex);
   }
 
@@ -57,12 +55,7 @@ export default class RecoverNonGracefulCallDisconnectsPlugin extends FlexPlugin 
     listeners.hangupCall();
   }
 
-  /**
-   * Register the notifications
-   */
-  registerNotifications() {
-    notifications.customNotifications();
-  }
+
 
   initComponents(flex) {
     flex.MainHeader.Content.add(<ReconnectDialog key="reconnect-dialog" />, {
