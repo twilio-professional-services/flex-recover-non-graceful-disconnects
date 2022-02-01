@@ -19,10 +19,6 @@ class Utils {
     return this._manager.store.getState().flex;
   }
 
-  get workerTasks() {
-    return this.flexState.worker.tasks;
-  }
-
   get loginHandler() {
     return this.flexState.session.loginHandler;
   }

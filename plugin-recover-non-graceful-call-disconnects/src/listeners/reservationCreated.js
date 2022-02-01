@@ -4,7 +4,6 @@ import {
 } from "@twilio/flex-ui";
 import { Constants, utils } from "../utils";
 import { ConferenceService, ConferenceStateService } from "../services";
-import { DisconnectedTaskActions } from "../states";
 
 const reservationListeners = new Map();
 
@@ -25,10 +24,10 @@ export default function reservationCreated() {
     // the UI may not actually receive this event (e.g if it fires during a page refresh, or if browser
     // not reachable)
     // Do the call tasks first
-    utils.workerTasks.forEach((reservation) => {
+    utils.manager.workerClient.reservations.forEach((reservation) => {
       if (
-        TaskHelper.isCallTask(reservation.source) &&
-        TaskHelper.isInWrapupMode(reservation.source)
+        TaskHelper.isCallTask(reservation.task) &&
+        TaskHelper.isInWrapupMode(reservation.task)
       ) {
         console.debug(
           `Initializing reservation ${reservation.sid} from pre-existing worker call task`
@@ -37,8 +36,8 @@ export default function reservationCreated() {
       }
     });
     // Then do the recovery ping task (if present)
-    utils.workerTasks.forEach((reservation) => {
-      if (isRecoveryPingTask(reservation.source)) {
+    utils.manager.workerClient.reservations.forEach((reservation) => {
+      if (isRecoveryPingTask(reservation.task)) {
         console.debug(
           `Initializing reservation ${reservation.sid} from pre-existing recovery ping task`
         );
@@ -51,13 +50,9 @@ export default function reservationCreated() {
 async function initializeReservation(reservation) {
   console.debug("initializeReservation", reservation);
 
-  if (reservation.addListener) {
-    reservation.addListener("accepted", () => reservationAccepted(reservation));
-  }
+  reservation.addListener("accepted", () => reservationAccepted(reservation));
 
-  // Depending on whether this came from state or from an event, the object will
-  // be different...
-  const reservationSid = reservation.reservationSid || reservation.sid;
+  const reservationSid = reservation.sid;
 
   console.debug("initializeReservation > reservationSid", reservationSid);
 
@@ -68,10 +63,6 @@ async function initializeReservation(reservation) {
     // Auto accept the task
     console.debug(
       `initializeReservation > about to accept task ${reservationSid}`
-    );
-
-    utils.manager.store.dispatch(
-      DisconnectedTaskActions.handleRecoveryPing()
     );
     
     Actions.invokeAction("AcceptTask", {
@@ -109,34 +100,26 @@ async function initializeReservation(reservation) {
           `Conference state not found for this task. It may have ended cleanly and been deleted. All good.`
         );
         return;
-      } else {
-        const timeDiff = (new Date() - Date.parse(currentConferenceState.disconnectedTime)) / 1000;
-        if (timeDiff > 20) {
-          console.debug(
-            `It's been over ${timeDiff} seconds since the disconnection. This is beyond the TTL of the ping task, so assume it's gone elsewhere at this point`
-          );
-          return;
-        }
-      }
+      } 
 
       console.debug(
         `Conference was non-gracefully disconnected. Prepare for reconnect`
       );
 
-      if (reservation.addListener) {
-        console.debug(
-          `Reservation completed - hiding dialog`
-        );
-        reservation.addListener("completed", () => { 
+      // Setup the reservation listeners that'll handle the completion of the disconnected task
+      // (this'll ensure the modal dialog is closed whenever reconnect task is routed to another agent
+      // since the reconnect task triggers the forced completion of the disconnected task)
+      const reservationFinishedEvents = ["timeout", "canceled", "rescinded", "completed", "wrapup"];
+      reservationFinishedEvents.forEach((event) => {
+        reservation.addListener(event, () => {
+          console.debug(
+            `Reservation finished - hiding dialog`
+          );
           closeReconnectDialog();
         });
-      }
+      });
       
       // This action will show the modal dialog - essentially blocking UI input
-      utils.manager.store.dispatch(
-        DisconnectedTaskActions.setDisconnectedTask(task.taskSid)
-      );
-
       showReconnectDialog("Disconnected from vehicle. Awaiting reconnection...");
 
       return;
@@ -235,9 +218,6 @@ async function reservationAccepted(reservation) {
     // If this is a reconnect task, update the modal dialog message and bring in the others!
     if (task.attributes.isReconnect === true) {
       console.debug("It's a reconnect task");
-      utils.manager.store.dispatch(
-        DisconnectedTaskActions.handleReconnectSuccess()
-      );
 
       let message = "Reconnected with vehicle!";
       if (task.attributes.disconnectedWorkerSid != utils.manager.workerClient.sid) {
