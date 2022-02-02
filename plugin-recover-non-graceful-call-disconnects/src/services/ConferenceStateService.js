@@ -65,6 +65,7 @@ class ConferenceStateService {
     return setGracefulDisconnectResult;
   };
 
+  /*
   static getConferenceStateByTaskSid = async (workerSid, taskSid) => {
     console.debug(`getConferenceStatesByTaskSid workerSid: ${workerSid} taskSid: ${taskSid}`);
 
@@ -75,6 +76,7 @@ class ConferenceStateService {
 
     return matchingState;
   };
+  */
 
   /**
    * Get all conference state for worker
@@ -82,6 +84,7 @@ class ConferenceStateService {
    * @param workerSid
    *
    */
+  /*
   static getConferenceStatesByWorker = async (workerSid) => {
     console.debug("getConferenceStatesByWorker", workerSid);
 
@@ -103,6 +106,7 @@ class ConferenceStateService {
     );
     return getConferenceStatesByWorkerResult;
   };
+  */
 
   /**
    * Clears the conference state for this SID

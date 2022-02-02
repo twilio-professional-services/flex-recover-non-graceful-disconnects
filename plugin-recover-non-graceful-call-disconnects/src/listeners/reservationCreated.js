@@ -1,6 +1,7 @@
 import {
   Actions,
   TaskHelper,
+  Utils
 } from "@twilio/flex-ui";
 import { Constants, utils } from "../utils";
 import { ConferenceService, ConferenceStateService } from "../services";
@@ -54,8 +55,6 @@ async function initializeReservation(reservation) {
 
   const reservationSid = reservation.sid;
 
-  console.debug("initializeReservation > reservationSid", reservationSid);
-
   const task = TaskHelper.getTaskByTaskSid(reservationSid);
 
   if (isRecoveryPingTask(task)) {
@@ -69,7 +68,7 @@ async function initializeReservation(reservation) {
       sid: reservationSid,
     });
 
-    showReconnectDialog("Reconnecting you with vehicle now...");
+    showReconnectDialog("Disconnected from vehicle.", "Reconnecting you now...");
 
     return;
   }
@@ -79,26 +78,12 @@ async function initializeReservation(reservation) {
     if (TaskHelper.isInWrapupMode(task)) {
       // If we arrived here via a page refresh or similar non-happy path, and task is in
       // wrapping state, verify that the agent did not terminate the call ungracefully
-      // NOTE: It's a race condtion to expect Flex to have populated task.conference yet,
-      // so look it up using our state model instead.
-      console.debug(
-        `Looking up current state of conference for wrapping task ${task.taskSid}`
-      );
-      // TODO: Can't I just find the conf sid somewhere?
-      const currentConferenceState = await ConferenceStateService.getConferenceStateByTaskSid(
-        utils.manager.workerClient.sid,
-        task.taskSid
-      );
+      // NOTE: Conference status callback will have updated task's followed_by attribute
+      // if that's the case
       if (
-        currentConferenceState &&
-        currentConferenceState.wasGracefulWorkerDisconnect
+        task.attributes.conversations?.followed_by !== "Reconnect Agent"
       ) {
         console.debug(`Conference was gracefully hung up. All good.`);
-        return;
-      } else if (!currentConferenceState) {
-        console.debug(
-          `Conference state not found for this task. It may have ended cleanly and been deleted. All good.`
-        );
         return;
       } 
 
@@ -111,16 +96,25 @@ async function initializeReservation(reservation) {
       // since the reconnect task triggers the forced completion of the disconnected task)
       const reservationFinishedEvents = ["timeout", "canceled", "rescinded", "completed", "wrapup"];
       reservationFinishedEvents.forEach((event) => {
-        reservation.addListener(event, () => {
+        reservation.addListener(event, (reservation) => {
           console.debug(
-            `Reservation finished - hiding dialog`
+            `Reservation finished. Attributes`, reservation.task.attributes
           );
-          closeReconnectDialog();
+          if (reservation.task.attributes.wasPingSuccessful === true) {
+            console.debug(
+              `Retaining dialog`
+            );
+          } else {
+            console.debug(
+              `Closing dialog`
+            );
+            closeReconnectDialog();
+          }
         });
       });
       
       // This action will show the modal dialog - essentially blocking UI input
-      showReconnectDialog("Disconnected from vehicle. Awaiting reconnection...");
+      showReconnectDialog("Disconnected from vehicle.", "Awaiting reconnection...");
 
       return;
     }
@@ -129,7 +123,6 @@ async function initializeReservation(reservation) {
       console.debug("Reconnect call!");
 
       if (task.attributes.disconnectedWorkerSid === utils.manager.workerClient.sid) {
-        console.debug("Reconnect call is mine!");
         // Need to auto-answer through here (or through existing auto-answer logic) - since modal dialog 
         // blocks any input.
         if (Constants.AUTO_ANSWER_RECONNECT_TASKS) {
@@ -200,7 +193,7 @@ async function reservationAccepted(reservation) {
       task.workerSid,
       task.attributes.call_sid,
       myParticipant.callSid,
-      utils.manager.workerClient.name
+      utils.manager.workerClient.attributes.full_name
     );
 
     // By this point, Flex's own reservationAccepted logic will have detected that there are only 2 participants, and
@@ -220,14 +213,20 @@ async function reservationAccepted(reservation) {
       console.debug("It's a reconnect task");
 
       let message = "Reconnected with vehicle!";
+      let messageDetail = undefined;
+
       if (task.attributes.disconnectedWorkerSid != utils.manager.workerClient.sid) {
         const disconnectedWorkerName = task.attributes.disconnectedWorkerName;
-        const disconnectedTime = new Date(task.attributes.disconnectedTime).toLocaleTimeString();
-        message = `Reconnected with vehicle!\n\nAgent, ${disconnectedWorkerName} encountered system issues at ${disconnectedTime}`;
+        // Get duration in secs
+        const duration = Utils.formatTimeDuration(
+            Math.max(Date.now() - Date.parse(task.attributes.disconnectedTime), 0),
+            "compact"
+        );
+        messageDetail = `${disconnectedWorkerName} dropped ${duration} ago`;
       }
 
       // If the disconnected agent was me, then we use the dialog
-      showReconnectDialog(message);
+      showReconnectDialog(message, messageDetail);
 
       // Do a slow close of the dialog - to give agent a chance to see it!
       setTimeout(() => {
@@ -321,10 +320,10 @@ function isTaskActive(task) {
   }
 }
 
-function showReconnectDialog(message) {
+function showReconnectDialog(message, messageDetail) {
   Actions.invokeAction("SetComponentState", {
     name: "ReconnectDialog",
-    state: { isOpen: true, message },
+    state: { isOpen: true, message, messageDetail },
   });
 }
 

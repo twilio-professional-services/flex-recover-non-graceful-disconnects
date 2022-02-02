@@ -48,9 +48,7 @@ class ReconnectDialog extends React.Component {
         <ReconnectDialogStyles>
           <DialogContent>
             <div className="Twilio dialog-text">{this.props.message}</div>
-            
-            <div className="Twilio dialog-text-demo-note">{Constants.SLOW_MODE && "** DEMO MODE: DELAYS ARE INTENDED **"}</div>
-
+            {this.props.messageDetail && <div className="Twilio dialog-text-detail">{this.props.messageDetail}</div>}
           </DialogContent>
         </ReconnectDialogStyles>
       </Dialog>
@@ -64,10 +62,12 @@ const mapStateToProps = (state) => {
     componentViewStates && componentViewStates.ReconnectDialog;
   const isOpen = reconnectDialogState && reconnectDialogState.isOpen;
   const message = reconnectDialogState && reconnectDialogState.message;
+  const messageDetail = reconnectDialogState && reconnectDialogState.messageDetail;
 
   return {
     isOpen,
     message,
+    messageDetail
   };
 };
 

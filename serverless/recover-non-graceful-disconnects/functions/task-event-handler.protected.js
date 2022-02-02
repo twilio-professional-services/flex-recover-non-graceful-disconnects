@@ -71,9 +71,21 @@ exports.handler = async function (context, event, callback) {
 
     if (eventType === 'reservation.accepted') {
       // Complete the ping task
-      await taskService.updateTask(WORKSPACE_SID, taskSid, {
+      taskService.updateTask(WORKSPACE_SID, taskSid, {
         assignmentStatus: "completed",
       });
+
+      // Update the original task to say ping was successful (use attributes that were propagated via the ping task)
+      const attributesForDisconnectedTask = JSON.parse(taskAttributesString);
+      const disconnectedTaskSid = attributesForDisconnectedTask.disconnectedTaskSid;
+      const newAttributesForDisconnectedTask = {
+        ...attributesForDisconnectedTask,
+        wasPingSuccessful: true
+      }
+      await taskService.updateTask(WORKSPACE_SID, disconnectedTaskSid, {
+        attributes: JSON.stringify(newAttributesForDisconnectedTask)
+      });
+
     }
 
     // So go ahead and enqueue new reconnect call task for the disconnected customer
@@ -118,7 +130,7 @@ exports.handler = async function (context, event, callback) {
       priority
     );
 
-    
+
   }
 
   if (isRelevantVoiceTaskEvent(event)) {
@@ -142,10 +154,11 @@ exports.handler = async function (context, event, callback) {
       console.debug(
         `Completing original disconnected call task with SID ${originalTaskSid}`
       );
+
       await taskService.updateTask(WORKSPACE_SID, originalTaskSid, {
         assignmentStatus: "completed",
         reason:
-          "Non-graceful agent disconnection resulted in a new reconnect task",
+          "Non-graceful agent disconnection resulted in a new reconnect task"
       });
     }
   }

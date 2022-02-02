@@ -5,11 +5,11 @@ export const ReconnectDialogStyles = styled('div')`
   text-align: center;
 
   .dialog-text {
-    font-size: 16px;
+    font-size: 14px;
     width: 200px;
   }
 
-  .dialog-text-demo-note {
+  .dialog-text-detail {
     padding-top: 10px;
     font-size: 12px;
   }

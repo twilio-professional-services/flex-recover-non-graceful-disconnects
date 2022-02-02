@@ -86,7 +86,7 @@ exports.handler = async function (context, event, callback) {
 
   console.debug(`'${statusCallbackEvent}' event for ${eventConferenceSid}`);
 
-  //Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
+  // Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
 
   if (statusCallbackEvent === "conference-end") {
     // Clean up the Sync Map entries - no longer of use
@@ -232,6 +232,19 @@ exports.handler = async function (context, event, callback) {
       syncMapItemData
     ),
   ]);
+  
+  // Update the task attributes for Flex to use if/when the agent recovers from the disconnection
+  // (and also for reporting!)
+  const disconnectedTaskAttributes = {
+    ...parsedAttributes,
+    disconnectedTime: syncMapItemData.disconnectedTime,
+    conversations: {
+      ...parsedAttributes.conversations,
+      followed_by: "Reconnect Agent"
+    }
+  }
+
+  await taskService.updateTask(WORKSPACE_SID, taskSid, { attributes: JSON.stringify(disconnectedTaskAttributes) });
 
   // Create the ping task.
   // Once worker recovers from whatever system issue caused the diconnect (e.g. page refresh), the ping
