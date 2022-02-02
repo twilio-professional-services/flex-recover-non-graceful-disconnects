@@ -14,17 +14,17 @@ The use case here is really to offer robust, exceptional quality of service to h
     * Associates our Conference Status Callback Handler with any new voice tasks that arrive - which is the foundation for being able to react to non-graceful call termination
     * Registers the conference - for any newly accepted task - to our shared state model, for use by that Conference Status Callback Handler
     * Upon graceful call termination by the agent (i.e. clicking Hangup button), the shared state model is updated to reflect this (and the conference is explicitly ended if there are only two participants)
-    * Upon a page reload (or any time the plugin loads), we look for any Wrapping call tasks that are still present in our shared state model and that weren't gracefully disconnected from by the agent. If this scenario is detected, a UI-blocking modal dialog is presented - to show that the reconnection attempt is in progress, and also to block any ability for the agent to Wrapup/Complete the task
+    * Upon a page reload (or any time the plugin loads), we look for any Wrapping call tasks that weren't gracefully disconnected from by the agent. If this scenario is detected, a UI-blocking modal dialog is presented - to show that the reconnection attempt is in progress, and also to block any ability for the agent to Wrapup/Complete the task
     * When the "Recovery Ping" task is received, the plugin auto-accepts it - which ultimately triggers our Taskrouter Event Stream Webhook to execute the delivery of the customer call via the "reconnect" call task, directly to the agent
     * Upon arrival of that reconnect call, the plugin auto-accepts it (which natively establishes a new conference between customer and agent)
     * Finally, the plugin will call our serverless function to dial in any remaining parties from the disconnected conference, and the modal dialog is closed - allowing the agent to resume the customer interaction
 * Serverless Functions
     * Utility functions invoked from the Flex plugin to manipulate the conference, the participants, and the shared state (Sync Map in this implementation)
 * Conference Status Callback Handler
-    * Implemented as another Function, this event handler reacts to conference events and maintains shared state (Sync Map) in order to diagnose non-graceful agent call terminations.
+    * Implemented as another Function, this event handler reacts to conference events and maintains shared state (Sync Map), and task attributes, in order to diagnose non-graceful agent call terminations.
     * Upon non-graceful agent call termination, an announcement is made to the remaining conference participant(s), and a "Recovery Ping" task is sent out to detect if the worker is reachable within a configurable TTL.
 * Taskrouter Event Stream Webhook
-    * Orchestrates the "reconnect" task based on the success/failure of the worker "ping" attempt)
+    * Orchestrates the "reconnect" task based on the success/failure of the worker "ping" attempt
     * If ping is answered by the disconnected worker, the original customer from the disconnected conference is enqueued via Taskrouter - to the same worker
     * If ping hits it's TTL, the customer call is enqueued to the same workflow as the original call was handled on, and priority level is elevated
 
@@ -46,9 +46,6 @@ Also, the best place to execute this participant logic is in the exiting `Confer
 
 A Flex feature request has been logged - to ideally allow this native Flex behavior to be configurable or overridden.
 
-### UI-blocking Timeout & Robustification!
-A mechanism still needs to be built whereby the modal dialog used to block the UI can timeout in response to certain factors such as the shared state model indicating that the disconnected conference has since ended (right now this check only happens once on loading the plugin) or the "Recovery Ping" task hitting it's TTL (at which point the reconnect call task goes to the queue).
-
 ### Internal Transfers
 The current shared state model (keyed on Conference SID) may not play very well with internal transfers - as it could result in two participants concurrently being seen as the "worker". Need to build some robustness around this and test it first and foremost. It might be OK!
 
@@ -58,7 +55,9 @@ Lots of testing will reveal these. The current state is largely focused on the h
 It also assumes a single page refresh by the agent. What if they refresh while the modal dialog is active and the reconnect process is happening? 
 
 ### Reporting Impact
-TBD. Group the calls under conversation.
+We've added a `followed_by` attribute to the Insights `conversations` object within task attributes. Whenever the agent disconnects ungracefully, we set this to `followed_by = "Reconnect Agent"` - which is something you can then report on via Flex Insights.
+
+This should be paired with other judicious use of `followed_by` - to allow you to report on transfers and other such call events. Refer to the [Flex Custom Insights Data Plugin](https://github.com/ldvlgr/custom-insights-data) for more.
 
 ## Pre-Requisites
 * An active Twilio account with Flex provisioned. Refer to the [Flex Quickstart](https://www.twilio.com/docs/flex/quickstart/flex-basics#sign-up-for-or-sign-in-to-twilio-and-create-a-new-flex-project") to create one.
@@ -140,18 +139,29 @@ This section outlines the required configuration in your Twilio Flex account for
 ### TaskRouter Workflows
 1. Navigate to TaskRouter -> Workspaces -> Flex Task Assignment -> Workflows
 1. Create a new Workflow called "Recovery Ping"
-    1. Set the Task Reservation Timeout to 15 seconds (to minimize time spent waiting for an agent's UI to respond to a ping)
     1. Add a Filter named "Ping Disconnected Agent"
         1. Set the "Matching Tasks" expression to:
-            * `disconnectedWorkerSid != null && recoveryAttemptFailed == false`
+            * `disconnectedWorkerSid != null`
         1. Under the "Routing Step", set the following:
             * Task Queue to `Recovery Ping`
             * Known Worker to `Worker SID`
             * Task Field with Worker SID to `task.disconnectedWorkerSid`
             * Leave all other fields at their default values (no need for a timeout, as it will default to the task's TTL)
-    1. TODO: Make a fallback mechanism to reach any available agent. Complex because the ping task is a different Task Channel. So need a means to find someone who genuinely has zero calls (and this has a clear race condition). Might be non-feasible, and might be better to just re-enqueue customer call at this point - and trust the staffing capacity
-
-  TODO: Screenshots for workflows
+        1. Set the default Task Queue to the same `Recovery Ping` queue (though these tasks should always hit their TTL in the main routing step - assuming the task TTL is < the default 120s reservation timeout)
+        
+        <img width="700px" src="readme_files/screenshot_workflow_ping.png"/>
+1. Navigate to TaskRouter -> Workspaces -> Flex Task Assignment -> Workflows
+1. Modify your existing voice call Workflow(s) in order to add "direct to agent" routing logic (NOTE: you may have separate workflows per call type, so may need to repeat this)
+    1. Add a Filter to the top of the workflow, named (e.g.) "Direct to an Agent"
+        1. Set the "Matching Tasks" expression to:
+            * `targetWorkerSid != null`
+        1. Under the "Routing Step", set the following:
+            * Task Queue to `Everyone` (Known Agent Routing will ensure sepcific worker gets the task; create a new queue if you need to see reconnects under a specific queue (e.g. for realtime monitoring))
+            * Known Worker to `Worker SID`
+            * Task Field with Worker SID to `task.targetWorkerSid`
+            * Leave all other fields at their default values (you may want to set a timeout; definitely ensure "Do not skip" is chosen for Skip Timeout - because we need the reconnect task to enter the queue before we can safely close the original task)
+            
+            <img width="700px" src="readme_files/screenshot_workflow_worker_routing_step.png"/>
 
 ### Taskrouter Event Stream Webhook
 
