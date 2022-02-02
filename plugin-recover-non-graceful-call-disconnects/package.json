@@ -1,6 +1,6 @@
 {
   "name": "plugin-recover-non-graceful-call-disconnects",
-  "version": "1.0.0",
+  "version": "13.0.0",
   "private": true,
   "scripts": {
     "postinstall": "flex-plugin pre-script-check",
