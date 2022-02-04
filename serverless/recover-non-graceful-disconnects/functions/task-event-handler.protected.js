@@ -33,8 +33,14 @@ exports.handler = async function (context, event, callback) {
   response.appendHeader("Access-Control-Allow-Headers", "Content-Type");
   response.appendHeader("Content-Type", "application/json");
 
-  const payload = event[0]["data"]["payload"];
+  
+  const payload = event[0] ? event[0]["data"]["payload"] : undefined;
 
+  if (!payload) {
+    console.warn('event[0] not present', event);
+    return callback(null, {});
+  }
+  
   const eventType = payload["eventtype"];
   const taskSid = payload["task_sid"];
   const taskChannel = payload["task_channel_unique_name"];

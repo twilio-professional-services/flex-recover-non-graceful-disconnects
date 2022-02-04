@@ -250,7 +250,7 @@ exports.handler = async function (context, event, callback) {
   // Once worker recovers from whatever system issue caused the diconnect (e.g. page refresh), the ping
   // task will be accepted, and our workflow event callback URL will perform the necessary logic to
   // reconnect the customer with the agent.
-  // If worker doesn't respond to the ping task within 15 sec timeout, our workflow event
+  // If worker doesn't respond to the ping task within 15 sec timeout (configurable below_), our workflow event
   // callback URL will engage when the task.canceled event fires.
   // See https://www.twilio.com/docs/taskrouter/api/task#create-a-task-resource
   // TODO: Get that timeout behavior tested!

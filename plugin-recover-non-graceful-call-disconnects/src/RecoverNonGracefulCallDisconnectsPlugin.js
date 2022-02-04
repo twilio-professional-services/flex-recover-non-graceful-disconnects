@@ -53,6 +53,7 @@ export default class RecoverNonGracefulCallDisconnectsPlugin extends FlexPlugin 
     listeners.reservationCreated();
     listeners.acceptTask();
     listeners.hangupCall();
+    listeners.transferTask();
   }
 
 
