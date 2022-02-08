@@ -75,6 +75,15 @@ async function initializeReservation(reservation) {
 
   if (TaskHelper.isCallTask(task)) {
     console.debug("initializeReservation > call task", task);
+    // If it's a warm transfer, we don't care for all the remaining logic
+    if (task.incomingTransferObject) {
+      console.debug("initializeReservation > incomingTransferObject", task.incomingTransferObject);
+      if (task.incomingTransferObject.mode === "WARM") {
+        console.debug("initializeReservation > Skipping reconnect logic for warm transfers");
+        return;
+      }
+    }
+
     if (TaskHelper.isInWrapupMode(task)) {
       // If we arrived here via a page refresh or similar non-happy path, and task is in
       // wrapping state, verify that the agent did not terminate the call ungracefully
@@ -119,6 +128,7 @@ async function initializeReservation(reservation) {
       return;
     }
 
+    // Reconnect calls get special auto-answer
     if (task.attributes.isReconnect) {
       console.debug("Reconnect call!");
 
@@ -167,20 +177,26 @@ async function reservationAccepted(reservation) {
     task.workerSid === utils.manager.workerClient.sid
   ) {
     console.debug("reservationAccepted > call task YES, worker match YES");
+    // If it's a warm transfer, we don't care for all the remaining logic
+    if (task.incomingTransferObject && task.incomingTransferObject.mode === "WARM") {
+      console.debug("initializeReservation > Skipping reconnect logic for warm transfers");
+      return;
+    }
+    
     console.debug(
       "reservationAccepted > Waiting for customer and worker to join the conference"
     );
     const participants = await waitForConferenceParticipants(task);
 
     const myParticipant = participants.find(
-      (p) => p.workerSid === utils.manager.workerClient.sid
+      (p) => p.isMyself
     );
     console.debug("reservationAccepted > conference", task.conference);
     console.debug("reservationAccepted > myParticipant", myParticipant);
 
     if (!myParticipant) {
       console.warn(
-        "reservationAccepted > worker participant not found or is not me. Not acting on this task"
+        "reservationAccepted > My participant not found. Not acting on this task"
       );
       return;
     }
@@ -275,7 +291,7 @@ function waitForConferenceParticipants(task) {
         return;
       }
 
-      const worker = participants.find((p) => p.participantType === "worker");
+      const worker = participants.find((p) => p.participantType === "worker" && p.isMyself);
       const customer = participants.find(
         (p) => p.participantType === "customer"
       );

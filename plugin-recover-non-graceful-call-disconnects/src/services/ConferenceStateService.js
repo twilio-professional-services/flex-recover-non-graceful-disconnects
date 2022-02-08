@@ -65,49 +65,6 @@ class ConferenceStateService {
     return setGracefulDisconnectResult;
   };
 
-  /*
-  static getConferenceStateByTaskSid = async (workerSid, taskSid) => {
-    console.debug(`getConferenceStatesByTaskSid workerSid: ${workerSid} taskSid: ${taskSid}`);
-
-    const conferenceStatesResponse = await this.getConferenceStatesByWorker(workerSid);
-
-    const matchingState = conferenceStatesResponse.conferenceStates.find((confState) => confState.taskSid === taskSid);
-    console.debug(`getConferenceStatesByTaskSid matchingState`, matchingState);
-
-    return matchingState;
-  };
-  */
-
-  /**
-   * Get all conference state for worker
-   *
-   * @param workerSid
-   *
-   */
-  /*
-  static getConferenceStatesByWorker = async (workerSid) => {
-    console.debug("getConferenceStatesByWorker", workerSid);
-
-    const getConferenceStatesByWorkerUrl = `${utils.baseServerlessUrl}/flex/get-conference-states-by-worker`;
-    const fetchBody = {
-      Token: utils.userToken,
-      workerSid,
-    };
-
-    const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
-    const fetchResponse = await fetch(
-      getConferenceStatesByWorkerUrl,
-      fetchOptions
-    );
-    const getConferenceStatesByWorkerResult = await fetchResponse.json();
-    console.debug(
-      "getConferenceStatesByWorker result",
-      getConferenceStatesByWorkerResult
-    );
-    return getConferenceStatesByWorkerResult;
-  };
-  */
-
   /**
    * Clears the conference state for this SID
    *

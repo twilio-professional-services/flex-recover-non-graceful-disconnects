@@ -184,6 +184,7 @@ build/
 # Twilio serverless function files
 .twilio-functions
 .twiliodeployinfo
+.twilioserverlessrc
 
 # Serverless directories
 .serverless/

@@ -52,8 +52,9 @@ exports.handler = async function (context, event, callback) {
     Reason: eventReason,
   } = event;
 
-  const syncMapSuffix = "ActiveConferences";
-  const globalSyncMapName = `Global.${syncMapSuffix}`;
+  // Global sync map is used by the conference status handler to find the worker associated with
+  // a conference - in determining when a worker leaves non-gracefully
+  const globalSyncMapName = `Global.ActiveConferences`;
 
   const globalSyncMapItem = await syncService.getMapItem(
     SYNC_SERVICE_SID,
@@ -81,7 +82,6 @@ exports.handler = async function (context, event, callback) {
 
   const parsedAttributes = JSON.parse(taskAttributes);
 
-  const workerSyncMapName = `Worker.${workerSid}.${syncMapSuffix}`;
   // TODO: Minimize use of global Sync Map (not scalable)
 
   console.debug(`'${statusCallbackEvent}' event for ${eventConferenceSid}`);
@@ -92,18 +92,11 @@ exports.handler = async function (context, event, callback) {
     // Clean up the Sync Map entries - no longer of use
     console.debug(`Conference ended with reason: '${eventReason}'`);
 
-    await Promise.all([
-      syncService.deleteMapItem(
+    await syncService.deleteMapItem(
         SYNC_SERVICE_SID,
         globalSyncMapName,
         eventConferenceSid
-      ),
-      syncService.deleteMapItem(
-        SYNC_SERVICE_SID,
-        workerSyncMapName,
-        eventConferenceSid
-      ),
-    ]);
+      );
 
     return callback(null, {});
   }
@@ -218,20 +211,12 @@ exports.handler = async function (context, event, callback) {
     disconnectedTime: new Date().toISOString(),
   };
 
-  await Promise.all([
-    syncService.updateMapItem(
+  await syncService.updateMapItem(
       SYNC_SERVICE_SID,
       globalSyncMapName,
       eventConferenceSid,
       syncMapItemData
-    ),
-    syncService.updateMapItem(
-      SYNC_SERVICE_SID,
-      workerSyncMapName,
-      eventConferenceSid,
-      syncMapItemData
-    ),
-  ]);
+    );
   
   // Update the task attributes for Flex to use if/when the agent recovers from the disconnection
   // (and also for reporting!)
