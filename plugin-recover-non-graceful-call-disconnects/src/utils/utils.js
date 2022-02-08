@@ -30,6 +30,14 @@ class Utils {
   get manager() {
     return this._manager;
   }
+
+  isIncomingTransfer(task) {
+    return task.incomingTransferObject && task.incomingTransferObject;
+  }
+
+  isIncomingWarmTransfer(task) {
+    return task.incomingTransferObject && task.incomingTransferObject.mode === "WARM";
+  }
 }
 
 export default new Utils();

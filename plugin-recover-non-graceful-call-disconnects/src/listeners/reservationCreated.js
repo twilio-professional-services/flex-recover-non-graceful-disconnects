@@ -76,9 +76,9 @@ async function initializeReservation(reservation) {
   if (TaskHelper.isCallTask(task)) {
     console.debug("initializeReservation > call task", task);
     // If it's a warm transfer, we don't care for all the remaining logic
-    if (task.incomingTransferObject) {
+    if (utils.isIncomingTransfer(task)) {
       console.debug("initializeReservation > incomingTransferObject", task.incomingTransferObject);
-      if (task.incomingTransferObject.mode === "WARM") {
+      if (utils.isIncomingWarmTransfer(task)) {
         console.debug("initializeReservation > Skipping reconnect logic for warm transfers");
         return;
       }
@@ -178,11 +178,11 @@ async function reservationAccepted(reservation) {
   ) {
     console.debug("reservationAccepted > call task YES, worker match YES");
     // If it's a warm transfer, we don't care for all the remaining logic
-    if (task.incomingTransferObject && task.incomingTransferObject.mode === "WARM") {
-      console.debug("initializeReservation > Skipping reconnect logic for warm transfers");
+    if (isIncomingWarmTransfer(task)) {
+      console.debug("reservationAccepted > Skipping reconnect logic for warm transfers");
       return;
     }
-    
+
     console.debug(
       "reservationAccepted > Waiting for customer and worker to join the conference"
     );
