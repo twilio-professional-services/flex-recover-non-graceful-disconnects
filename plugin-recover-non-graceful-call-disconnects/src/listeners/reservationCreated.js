@@ -38,7 +38,7 @@ export default function reservationCreated() {
     });
     // Then do the recovery ping task (if present)
     utils.manager.workerClient.reservations.forEach((reservation) => {
-      if (isRecoveryPingTask(reservation.task)) {
+      if (utils.isRecoveryPingTask(reservation.task)) {
         console.debug(
           `Initializing reservation ${reservation.sid} from pre-existing recovery ping task`
         );
@@ -57,7 +57,9 @@ async function initializeReservation(reservation) {
 
   const task = TaskHelper.getTaskByTaskSid(reservationSid);
 
-  if (isRecoveryPingTask(task)) {
+  // PING TASK LOGIC
+  // ---------------
+  if (utils.isRecoveryPingTask(task)) {
     console.debug("initializeReservation > recovery ping task", task);
     // Auto accept the task
     console.debug(
@@ -68,11 +70,13 @@ async function initializeReservation(reservation) {
       sid: reservationSid,
     });
 
-    showReconnectDialog("Disconnected from vehicle.", "Reconnecting you now...");
+    utils.showReconnectDialog("Disconnected from vehicle.", "Reconnecting you now...");
 
     return;
   }
 
+  // CALL TASK LOGIC
+  // ---------------
   if (TaskHelper.isCallTask(task)) {
     console.debug("initializeReservation > call task", task);
     // If it's a warm transfer, we don't care for all the remaining logic
@@ -117,13 +121,13 @@ async function initializeReservation(reservation) {
             console.debug(
               `Closing dialog`
             );
-            closeReconnectDialog();
+            utils.closeReconnectDialog();
           }
         });
       });
       
       // This action will show the modal dialog - essentially blocking UI input
-      showReconnectDialog("Disconnected from vehicle.", "Awaiting reconnection...");
+      utils.showReconnectDialog("Disconnected from vehicle.", "Awaiting reconnection...");
 
       return;
     }
@@ -152,10 +156,6 @@ async function initializeReservation(reservation) {
 }
 
 
-function isRecoveryPingTask(task) {
-  return task.workflowName === "Recovery Ping";
-}
-
 /**
  * Handles reservation accepted events - where we wait until conference participants join and then
  * populate the backend state model
@@ -178,7 +178,7 @@ async function reservationAccepted(reservation) {
   ) {
     console.debug("reservationAccepted > call task YES, worker match YES");
     // If it's a warm transfer, we don't care for all the remaining logic
-    if (isIncomingWarmTransfer(task)) {
+    if (utils.isIncomingWarmTransfer(task)) {
       console.debug("reservationAccepted > Skipping reconnect logic for warm transfers");
       return;
     }
@@ -242,11 +242,11 @@ async function reservationAccepted(reservation) {
       }
 
       // If the disconnected agent was me, then we use the dialog
-      showReconnectDialog(message, messageDetail);
+      utils.showReconnectDialog(message, messageDetail);
 
       // Do a slow close of the dialog - to give agent a chance to see it!
       setTimeout(() => {
-        closeReconnectDialog();
+        utils.closeReconnectDialog();
       }, 3000);
 
       ConferenceService.moveParticipantsToNewConference(
@@ -270,7 +270,7 @@ function waitForConferenceParticipants(task) {
     let waitForConferenceInterval = setInterval(() => {
       const { conference } = task;
 
-      if (!isTaskActive(task)) {
+      if (!utils.isTaskActive(task)) {
         console.debug(
           "waitForConferenceParticipants > Call canceled, clearing waitForConferenceInterval"
         );
@@ -324,28 +324,5 @@ function waitForConferenceParticipants(task) {
         resolve([]);
       }
     }, maxWaitTimeMs);
-  });
-}
-
-function isTaskActive(task) {
-  const { sid: reservationSid, taskStatus } = task;
-  if (taskStatus === "canceled") {
-    return false;
-  } else {
-    return utils.manager.workerClient.reservations.has(reservationSid);
-  }
-}
-
-function showReconnectDialog(message, messageDetail) {
-  Actions.invokeAction("SetComponentState", {
-    name: "ReconnectDialog",
-    state: { isOpen: true, message, messageDetail },
-  });
-}
-
-function closeReconnectDialog() {
-  Actions.invokeAction("SetComponentState", {
-    name: "ReconnectDialog",
-    state: { isOpen: false },
   });
 }
