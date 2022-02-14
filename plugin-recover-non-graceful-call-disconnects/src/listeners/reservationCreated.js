@@ -173,41 +173,29 @@ async function reservationAccepted(reservation) {
   // TODO: Make all of this work for transfers too. Right now it only caters to original assigned
   // worker.
   if (
-    TaskHelper.isCallTask(task) &&
-    task.workerSid === utils.manager.workerClient.sid
+    TaskHelper.isCallTask(task)
   ) {
-    console.debug("reservationAccepted > call task YES, worker match YES");
-    // If it's a warm transfer, we don't care for all the remaining logic
-    if (utils.isIncomingWarmTransfer(task)) {
-      console.debug("reservationAccepted > Skipping reconnect logic for warm transfers");
-      return;
-    }
 
     console.debug(
       "reservationAccepted > Waiting for customer and worker to join the conference"
     );
-    const participants = await waitForConferenceParticipants(task);
+    await waitForConferenceParticipants(task);
 
-    const myParticipant = participants.find(
-      (p) => p.isMyself
-    );
+    const myParticipant = utils.getMyWorkerParticipantFromConference(task.conference);
+
     console.debug("reservationAccepted > conference", task.conference);
     console.debug("reservationAccepted > myParticipant", myParticipant);
 
-    if (!myParticipant) {
-      console.warn(
-        "reservationAccepted > My participant not found. Not acting on this task"
-      );
-      return;
-    }
-
-    await ConferenceStateService.addActiveConference(
+    // Add the worker's details to backend state model for use by conference status callback
+    // Only when there's one worker left on the conference, do we engage the recovery logic upon
+    // non-graceful disconnect 
+    await ConferenceStateService.addWorker(
       task.conference.conferenceSid,
       task.taskSid,
       task.attributes,
       task.workflowSid,
+      task.attributes.call_sid, // customer call SID
       task.workerSid,
-      task.attributes.call_sid,
       myParticipant.callSid,
       utils.manager.workerClient.attributes.full_name
     );
@@ -216,7 +204,6 @@ async function reservationAccepted(reservation) {
     // will have made sure the worker's endConferenceOnExit flag is set to true (despite any effort we make to initialize it
     // to false during AcceptTask). So we are best to just wait til everyone has joined, conference has started, and then
     // make the update to the worker participant.
-    // TODO: Validate this endConferenceOnExit workaround isn't a race condition - by refreshing page as soon as call is accepted.
     // TODO: This logic should be shifted to our conference status callback listener (but there's a bug with `conference-modify` event type)
     await ConferenceService.updateEndConferenceOnExit(
       task.conference.conferenceSid,
@@ -224,8 +211,8 @@ async function reservationAccepted(reservation) {
       false
     );
 
-    // If this is a reconnect task, update the modal dialog message and bring in the others!
-    if (task.attributes.isReconnect === true) {
+    // If this is a reconnect task (and it's not one that's just been transferred), update the modal dialog message and bring in the others!
+    if (task.attributes.isReconnect === true && !utils.isIncomingTransfer(task)) {
       console.debug("It's a reconnect task");
 
       let message = "Reconnected with vehicle!";
@@ -291,7 +278,7 @@ function waitForConferenceParticipants(task) {
         return;
       }
 
-      const worker = participants.find((p) => p.participantType === "worker" && p.isMyself);
+      const worker = utils.getMyWorkerParticipantFromConference(conference);
       const customer = participants.find(
         (p) => p.participantType === "customer"
       );
@@ -309,7 +296,7 @@ function waitForConferenceParticipants(task) {
 
       waitForConferenceInterval = clearInterval(waitForConferenceInterval);
 
-      resolve(participants);
+      resolve();
     }, waitTimeMs);
 
     setTimeout(() => {

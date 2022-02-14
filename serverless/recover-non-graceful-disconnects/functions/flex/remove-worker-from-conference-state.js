@@ -2,8 +2,11 @@ const Twilio = require("twilio");
 const TokenValidator = require("twilio-flex-token-validator").functionValidator;
 
 /**
- * This function is invoked from the Flex Plugin to record that the agent left the conference
- * gracefully
+ *
+ * This function is invoked from the Flex Plugin to clear the current worker from the
+ * conference state - whenever they disconnect gracefully. This stops the status callback
+ * logic from executing the non-graceful disconnect logic for the worker when the
+ * particpant-leave event comes in
  *
  * NOTE: For this implementation, we use a Sync Map.
  * In a real-world scenario, we would recommend using your own backend services to
@@ -28,7 +31,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   const globalSyncMapName = `Global.ActiveConferences`;
 
   console.debug(
-    `Setting wasGracefulWorkerDisconnect=true for conference ${conferenceSid}`
+    `Removing worker ${workerSid} from conference ${conferenceSid}`
   );
 
   const globalSyncMapItem = await syncService.getMapItem(
@@ -45,9 +48,11 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     return callback(null, response);
   }
 
+  const newWorkers = globalSyncMapItem.data.workers.filter((w) => w.workerSid !== workerSid);
+
   const newSyncMapItemData = {
     ...globalSyncMapItem.data,
-    wasGracefulWorkerDisconnect: true,
+    workers: [...newWorkers]
   };
 
   await syncService.updateMapItem(

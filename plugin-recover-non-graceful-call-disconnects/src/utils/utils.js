@@ -39,6 +39,14 @@ class Utils {
     return task.incomingTransferObject && task.incomingTransferObject.mode === "WARM";
   }
 
+  getNextWorkerParticipantFromConference(conference) {
+    return conference.participants.find((p) => p.participantType === "worker" && !p.isMyself);
+  }
+
+  getMyWorkerParticipantFromConference(conference) {
+    return conference.participants.find((p) => p.participantType === "worker" && p.isMyself);
+  }
+
   isRecoveryPingTask(task) {
     return task.workflowName === "Recovery Ping";
   }

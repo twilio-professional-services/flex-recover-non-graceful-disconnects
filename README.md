@@ -35,7 +35,10 @@ This will allow all of our orchestration logic (from this repo) to take care of 
 
 See also "Flex `endConferenceOnExit` Idiosyncracies" under "Known Issues & Improvements Needed" below - as there are some necessary workarounds due to concurrent OOTB Flex orchestration of that same `endConferenceOnExit` flag.
 
-## Known Issues & Improvements Needed
+## Warm Transfers to other Agents
+When there are multiple agents on the call, the non-graceful disconnect logic is not critical - since there is coverage for the customer if one agent drops unexpectedly (e.g. refreshes their page). Therefore, we only engage the non-graceful disconnect logic if it was the LAST agent on the call who disconnected-non-gracefully. This is easiest from a design persepective, and also from an end user-experience perspective.
+
+If the remaining connected agent needs to get the disconnected agent back on the call, they could potentially warm transfer them back in. There is a risk that the disconnected agent might receive another call though - when they go available. This will be very tricky to orchestrate/automate through Flex UI - without Taskrouter/workflow logic. For example, shifting the worker into a dedicated activity that is an "available" activity, but one that is excluded from ACD calls.
 
 ### Flex `endConferenceOnExit` Idiosyncracies 
 Flex automatically updates `endConferenceOnExit` for the entire task reservation every time a conference update comes in (as well as on task acceptance - when the conference is created). And any time there are two or less active participants, it unavoidably sets `endConferenceOnExit` to `true`. This is a safeguard which is valid in most cases (just not this scenario where we are wanting the customer to remain connected to the Twilio conference on non-graceful agent disconnection).
@@ -45,9 +48,6 @@ We've worked around by essentially undoing the OOTB Flex conference participant 
 Also, the best place to execute this participant logic is in the exiting `ConferenceMonitor` of our flex-dialpad-addon-plugin (which we've made available through the above mentioned [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects)).
 
 A Flex feature request has been logged - to ideally allow this native Flex behavior to be configurable or overridden.
-
-### Internal Transfers
-The current shared state model (keyed on Conference SID) may not play very well with internal transfers - as it could result in two participants concurrently being seen as the "worker". Need to build some robustness around this and test it first and foremost. It might be OK!
 
 ### Edge Cases
 Lots of testing will reveal these. The current state is largely focused on the happy path, where remaining participants are active calls (not on hold) and nobody decides to intervene and drop from the conference during the reconnect orchestration. 

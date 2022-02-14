@@ -2,8 +2,7 @@ const Twilio = require("twilio");
 const TokenValidator = require("twilio-flex-token-validator").functionValidator;
 
 /**
- * This function is invoked from the Flex Plugin to persist the current conference
- * state - for use later when handling conference events.
+ * This function is invoked from the Flex Plugin to add a new worker to the state model.
  *
  * NOTE: For this implementation, we use a Sync Map.
  * In a real-world scenario, we would recommend using your own backend services to
@@ -20,6 +19,9 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   const { ACCOUNT_SID, AUTH_TOKEN, SYNC_SERVICE_SID } = context;
   const twilioClient = Twilio(ACCOUNT_SID, AUTH_TOKEN);
   const syncService = require(Runtime.getFunctions()["services/sync-map"].path);
+  const conferenceService = require(Runtime.getFunctions()[
+    "services/conference"
+  ].path);
 
   const {
     conferenceSid,
@@ -36,26 +38,58 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   // a conference - in determining when a worker leaves non-gracefully
   const globalSyncMapName = `Global.ActiveConferences`;
 
-  const syncMapPromises = [];
-
-  const syncMapItemData = {
+  const conferenceSyncMapItemData = {
     taskSid,
-    taskAttributes,
     taskWorkflowSid,
+    taskAttributes,
     customerCallSid,
-    workerCallSid,
-    workerSid,
-    workerName,
-    dateCreated: new Date().toISOString(),
   };
+  const workers = [
+    {
+      workerSid,
+      workerName,
+      workerCallSid,
+    },
+  ];
 
-  await syncService.addMapItem(
+  // Conference state may already exist or may need created if this is first worker
+  const globalSyncMapItem = await syncService.getMapItem(
+    SYNC_SERVICE_SID,
+    globalSyncMapName,
+    conferenceSid
+  );
+
+  if (!globalSyncMapItem) {
+    const newSyncMapItemData = {
+      ...conferenceSyncMapItemData,
+      workers: [...workers],
+    };
+
+    await syncService.addMapItem(
       SYNC_SERVICE_SID,
       globalSyncMapName,
       conferenceSid,
-      syncMapItemData
+      newSyncMapItemData
     );
-    
+  } else {
+    const updatedWorkers = [...globalSyncMapItem.data.workers];
+
+    // Update the state with new workers array, along with more task details from Flex
+    // (saves us making a data-dip to Taskrouter for these)
+    const updatedSyncMapItemData = {
+      ...globalSyncMapItem.data,
+      workers: [...updatedWorkers, ...workers],
+      taskAttributes,
+    };
+
+    await syncService.updateMapItem(
+      SYNC_SERVICE_SID,
+      globalSyncMapName,
+      conferenceSid,
+      updatedSyncMapItemData
+    );
+  }
+
   response.setBody({
     success: true,
   });

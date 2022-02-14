@@ -17,13 +17,10 @@ export default function hangupCall() {
 
     console.debug("beforeHangupCall > task.conference", task.conference);
 
-    if (
-      TaskHelper.isCallTask(task) &&
-      task.workerSid === utils.manager.workerClient.sid
-    ) {
-      // Store (in backend) the fact that this was a graceful disconnect
+    if (TaskHelper.isCallTask(task)) {
+      // Remove this worker from backend state model
       // Our conference status callback handler can consequently ignore the agent participant-leave event
-      await ConferenceStateService.setGracefulDisconnect(
+      await ConferenceStateService.removeWorker(
         task.conference.conferenceSid,
         utils.manager.workerClient.sid
       );

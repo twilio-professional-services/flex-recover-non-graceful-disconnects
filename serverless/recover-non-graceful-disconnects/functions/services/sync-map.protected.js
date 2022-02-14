@@ -1,12 +1,15 @@
-const createSyncMap = (serviceSid, mapName) => {
+const createSyncMap = async (serviceSid, mapName) => {
   console.debug(`Creating Sync Map ${mapName}`);
-  return twilioClient.sync.services(serviceSid).syncMaps.create({
-    uniqueName: mapName,
-  });
+  try {
+    await twilioClient.sync.services(serviceSid).syncMaps.create({
+      uniqueName: mapName,
+    });
+  } catch (error) {
+  }
 };
 
 const addMapItem = async (serviceSid, mapName, itemKey, itemData, isRetry) => {
-  console.debug(`Adding ${itemKey} to Sync Map ${mapName}`);
+  console.debug(`Adding ${itemKey} to sync map ${mapName} with data ${JSON.stringify(itemData)}`);
   try {
     await twilioClient.sync
       .services(serviceSid)
@@ -18,7 +21,7 @@ const addMapItem = async (serviceSid, mapName, itemKey, itemData, isRetry) => {
       });
   } catch (error) {
     if (isRetry) {
-      console.error(
+      console.warn(
         `Failed to create ${itemKey} in Sync Map ${mapName}.`,
         error
       );
@@ -54,21 +57,22 @@ const getAllMapItems = async (serviceSid, mapName) => {
   } catch (error) {}
 };
 
-const deleteMapItem = async (serviceSid, mapName, key) => {
+const deleteMapItem = async (serviceSid, mapName, itemKey) => {
+  console.debug(`Deleting ${itemKey} from sync map ${mapName}`);
+
   try {
     await twilioClient.sync
       .services(serviceSid)
       .syncMaps(mapName)
-      .syncMapItems(key)
+      .syncMapItems(itemKey)
       .remove();
   } catch (error) {
-    console.debug(`Unable to delete Map Item: ${error}`);
-    throw error;
+    console.warn(`Unable to delete Map Item: ${error}`);
   }
 };
 
 const updateMapItem = async (serviceSid, mapName, itemKey, itemData) => {
-  console.debug(`Updating ${itemKey} in sync map ${mapName}`);
+  console.debug(`Updating ${itemKey} in sync map ${mapName} with data ${JSON.stringify(itemData)}`);
   try {
     await twilioClient.sync
       .services(serviceSid)
@@ -78,7 +82,7 @@ const updateMapItem = async (serviceSid, mapName, itemKey, itemData) => {
         data: itemData,
       });
   } catch (error) {
-    console.error(`Error updating ${itemKey} in sync map ${mapName}.`, error);
+    console.warn(`Error updating ${itemKey} in sync map ${mapName}.`, error);
   }
 };
 

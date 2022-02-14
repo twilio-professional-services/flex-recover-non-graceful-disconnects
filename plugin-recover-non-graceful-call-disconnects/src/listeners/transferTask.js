@@ -4,25 +4,26 @@ import { ConferenceStateService } from "../services";
 import { utils } from "../utils";
 
 /**
- * Handles beforeTransferTask and clears down the conference state for next agent to then populate
+ * Handles beforeTransferTask and sets graceful disconnect flag if it's a cold transfer
  *
  */
 export default function transferTask() {
   Actions.addListener("beforeTransferTask", async (payload) => {
-    console.debug("beforeTransferTask", payload);
 
-    const { task } = payload;
+    const { task, options } = payload;
 
-    console.debug("beforeTransferTask > task.conference", task.conference);
+    console.debug("beforeTransferTask > payload", payload);
 
     if (
       TaskHelper.isCallTask(task) &&
-      task.workerSid === utils.manager.workerClient.sid
+      options.mode === "COLD"
     ) {
-      // Clear active conference state and prepare it for next agent to populate
-      await ConferenceStateService.clearActiveConference(
-        task.conference.conferenceSid
-      );
+      // Remove this worker from backend state model
+      // Our conference status callback handler can consequently ignore the agent participant-leave event
+      await ConferenceStateService.removeWorker(
+        task.conference.conferenceSid,
+        utils.manager.workerClient.sid
+      );     
     }
   });
 }

@@ -8,38 +8,37 @@ class ConferenceStateService {
   /**
    * Adds the initial state of the conference
    */
-  static addActiveConference = async (
+  static addWorker = async (
     conferenceSid,
     taskSid,
     taskAttributes,
     taskWorkflowSid,
-    workerSid,
     customerCallSid,
-    workerCallSid,
-    workerName,
-    wasGracefulWorkerDisconnect = false
-  ) => {
-    console.debug("addActiveConference", conferenceSid);
 
-    const addActiveConferenceUrl = `${utils.baseServerlessUrl}/flex/add-active-conference`;
+    workerSid,
+    workerCallSid,
+    workerName
+  ) => {
+    console.debug(`ConferenceStateService.addWorker conferenceSid: ${conferenceSid} workerSid: ${workerSid}`);
+
+    const fetchUrl = `${utils.baseServerlessUrl}/flex/add-worker-to-conference-state`;
     const fetchBody = {
       Token: utils.userToken,
       conferenceSid,
       taskSid,
       taskAttributes: JSON.stringify(taskAttributes),
       taskWorkflowSid,
-      workerSid,
       customerCallSid,
+      workerSid,
       workerCallSid,
-      workerName,
-      wasGracefulWorkerDisconnect,
+      workerName
     };
 
     const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
-    const fetchResponse = await fetch(addActiveConferenceUrl, fetchOptions);
-    const addActiveConferenceResult = await fetchResponse.json();
-    console.debug("addActiveConference result", addActiveConferenceResult);
-    return addActiveConferenceResult;
+    const fetchResponse = await fetch(fetchUrl, fetchOptions);
+    const fetchResult = await fetchResponse.json();
+    console.debug("ConferenceStateService.addWorker result", fetchResult);
+    return fetchResult;
   };
 
   /**
@@ -48,10 +47,10 @@ class ConferenceStateService {
    * @param conferenceSid
    *
    */
-  static setGracefulDisconnect = async (conferenceSid, workerSid) => {
-    console.debug("setGracefulDisconnect", conferenceSid);
+  static removeWorker = async (conferenceSid, workerSid) => {
+    console.debug(`ConferenceStateService.removeWorker conferenceSid: ${conferenceSid} workerSid: ${workerSid}`);
 
-    const setGracefulDisconnectUrl = `${utils.baseServerlessUrl}/flex/set-graceful-disconnect`;
+    const fetchUrl = `${utils.baseServerlessUrl}/flex/remove-worker-from-conference-state`;
     const fetchBody = {
       Token: utils.userToken,
       conferenceSid,
@@ -59,32 +58,12 @@ class ConferenceStateService {
     };
 
     const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
-    const fetchResponse = await fetch(setGracefulDisconnectUrl, fetchOptions);
-    const setGracefulDisconnectResult = await fetchResponse.json();
-    console.debug("setGracefulDisconnect result", setGracefulDisconnectResult);
-    return setGracefulDisconnectResult;
+    const fetchResponse = await fetch(fetchUrl, fetchOptions);
+    const fetchResult = await fetchResponse.json();
+    console.debug("ConferenceStateService.removeWorker", fetchResult);
+    return fetchResult;
   };
 
-  /**
-   * Clears the conference state for this SID
-   *
-   * @param conferenceSid
-   */
-  static clearActiveConference = async (conferenceSid) => {
-    console.debug("clearActiveConference", conferenceSid);
-
-    const clearActiveConferenceUrl = `${utils.baseServerlessUrl}/flex/clear-active-conference`;
-    const fetchBody = {
-      Token: utils.userToken,
-      conferenceSid,
-    };
-
-    const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
-    const fetchResponse = await fetch(clearActiveConferenceUrl, fetchOptions);
-    const clearActiveConferenceResult = await fetchResponse.json();
-    console.debug("clearActiveConference result", clearActiveConferenceResult);
-    return clearActiveConferenceResult;
-  };
 }
 
 export default ConferenceStateService;

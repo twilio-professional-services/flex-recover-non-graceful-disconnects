@@ -15,8 +15,7 @@ export default function acceptTask() {
     const { task } = payload;
 
     if (
-      TaskHelper.isCallTask(task) &&
-      task.workerSid === utils.manager.workerClient.sid
+      TaskHelper.isCallTask(task)
     ) {
       // Set endconferenceonexit to false - to allow customer call to remain active/recovarable if agent
       // ends non-gracefully
@@ -27,10 +26,7 @@ export default function acceptTask() {
 
       // payload.conferenceOptions.endConferenceOnExit = false;
 
-      // TODO: statusCallback is a specific handler for call events for this participant, and could be useful for
-      // deriving who worker is (vs customer)
       payload.conferenceOptions.conferenceStatusCallback = `${utils.baseServerlessUrl}/conference-status-handler`;
-      payload.conferenceOptions.statusCallback = `${utils.baseServerlessUrl}/conference-status-handler`;
       payload.conferenceOptions.conferenceStatusCallbackEvent = "end,leave";
       console.debug("Conference Options", payload.conferenceOptions);
     }

@@ -45,21 +45,25 @@ exports.handler = async function (context, event, callback) {
     "connection-interrupted.mp3";
 
   const {
-    CallSid: eventCallSid,
-    ConferenceSid: eventConferenceSid,
+    CallSid: callSid,
+    ConferenceSid: conferenceSid,
     StatusCallbackEvent: statusCallbackEvent,
-    EndConferenceOnExit: eventEndConferenceOnExit,
     Reason: eventReason,
   } = event;
 
+
+  // TODO: Minimize use of global Sync Map (not scalable)
+  console.debug(`'${statusCallbackEvent}' event for ${conferenceSid}`);
+
+  // Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
   // Global sync map is used by the conference status handler to find the worker associated with
   // a conference - in determining when a worker leaves non-gracefully
   const globalSyncMapName = `Global.ActiveConferences`;
 
-  const globalSyncMapItem = await syncService.getMapItem(
+  let globalSyncMapItem = await syncService.getMapItem(
     SYNC_SERVICE_SID,
     globalSyncMapName,
-    eventConferenceSid
+    conferenceSid
   );
 
   if (!globalSyncMapItem) {
@@ -73,29 +77,21 @@ exports.handler = async function (context, event, callback) {
     taskSid,
     taskAttributes,
     taskWorkflowSid,
-    workerSid,
     customerCallSid,
-    workerCallSid,
-    workerName,
-    wasGracefulWorkerDisconnect,
+    workers
   } = globalActiveConference;
 
-  const parsedAttributes = JSON.parse(taskAttributes);
 
-  // TODO: Minimize use of global Sync Map (not scalable)
 
-  console.debug(`'${statusCallbackEvent}' event for ${eventConferenceSid}`);
-
-  // Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
 
   if (statusCallbackEvent === "conference-end") {
-    // Clean up the Sync Map entries - no longer of use
+    // Clean up the Sync Map item on conference end - no longer of use
     console.debug(`Conference ended with reason: '${eventReason}'`);
 
     await syncService.deleteMapItem(
         SYNC_SERVICE_SID,
         globalSyncMapName,
-        eventConferenceSid
+        conferenceSid
       );
 
     return callback(null, {});
@@ -103,12 +99,17 @@ exports.handler = async function (context, event, callback) {
 
   // Bail out early if it's not an event we care about
   if (
-    statusCallbackEvent !== "participant-leave" &&
-    statusCallbackEvent !== "participant-modify" // EDIT: Buggy/doesn't work
+    statusCallbackEvent !== "participant-leave" //&&
+    //statusCallbackEvent !== "participant-modify" // EDIT: Buggy/doesn't work
   ) {
     return callback(null, {});
   }
 
+  /**
+   * PARTICIPANT-MODIFY (NOT POSSIBLE DUE TO FLEX BUG)
+   */
+
+  /*
   if (statusCallbackEvent === "participant-modify") {
     // EDIT: Not working due to Flex Orchestration bug (see README)
 
@@ -147,13 +148,17 @@ exports.handler = async function (context, event, callback) {
     }
     return callback(null, {});
   }
+  */
+
 
   /**
-   * Everything here on is for participant-leave
+   * PARTICIPANT-LEAVE
    */
 
-  const didCustomerLeave = customerCallSid && customerCallSid === eventCallSid;
-  const didAgentLeave = workerCallSid && workerCallSid === eventCallSid;
+
+  const didCustomerLeave = customerCallSid && customerCallSid === callSid;
+  const workerCount = workers ? workers.length : 0;
+  const workerThatLeft = workers ? workers.find((w) => w.workerCallSid === callSid) : undefined;
 
   if (didCustomerLeave) {
     // Might need to use this information later
@@ -163,66 +168,78 @@ exports.handler = async function (context, event, callback) {
     return callback(null, {});
   }
 
-  if (!didAgentLeave) {
-    // We don't need to do anything unless it's the agent who disconnects non-gracefully
-    console.debug(`Wasn't the agent who left, so irrelevant`);
+  if (!workerThatLeft) {
+    // We don't need to do anything unless it's an agent who disconnects non-gracefully
+    // NOTE: Graceful terminations via Hangup, will clear out the worker from the state model
+    console.debug(`No record of this call in our list of workers, so either not a worker, or they left gracefully`);
     return callback(null, {});
   }
 
-  // Did agent leave by hanging up?
-  if (wasGracefulWorkerDisconnect) {
-    console.debug(
-      `Agent left by clicking Hangup. Graceful. Nothing more to do`
-    );
-    return callback(null, {});
-  }
 
   // Go grab the conference and double-check it's not ended already (sometimes participant-leave events
   // come before conference-end, sometimes after, so go to the source just to be sure)
   const conference = await conferenceService.fetchConference(
-    eventConferenceSid
+    conferenceSid
   );
 
   if (conference && conference.status === "completed") {
     console.debug(
-      `Conference has ended with reason: '${conference.reasonConferenceEnded}`
+      `Conference has ended with reason: '${conference.reasonConferenceEnded}. State will be deleted once conference-end is received`
     );
     return callback(null, {});
   }
 
-  console.debug(`Agent left non-gracefully. Engaging recovery logic...`);
+  console.debug(`Agent left non-gracefully`);
 
-  // Inform all conference participants of what's happening
-  const fullAnnouncementPath = `https://${DOMAIN_NAME}/${ANNOUNCEMENT_PATH_CONNECTION_TO_AGENT_LOST}`;
-  await conferenceService.makeConferenceAnnouncement(
-    eventConferenceSid,
-    fullAnnouncementPath
-  );
-
-  // Make sure endConferenceOnExit is set appropriately for remaining participants - to avoid anyone being left alone when someone else drops
-  // TODO: Evaluate if we even need to. E.g. if call drops from 3 to 2 participants (and agent is gone), do we even need to set the 3rd party to 
-  // true? Worst case - vehicle remains in conf alone while reconnect haoppens.
-  //updateEndConferenceOnExitFlags();
-
-  // Update the sync map
+  // Update the sync map (remove the disconnected worker now that we know about them)
+  const newWorkers = workers.filter((w) => w.workerSid !== workerThatLeft.workerSid);
   const syncMapItemData = {
     ...globalActiveConference,
-    workerDisconnected: true,
-    disconnectedTime: new Date().toISOString(),
+    workers: [...newWorkers]
   };
 
   await syncService.updateMapItem(
       SYNC_SERVICE_SID,
       globalSyncMapName,
-      eventConferenceSid,
+      conferenceSid,
       syncMapItemData
     );
+
+  // If the conference has more than one worker, then we don't need to execute our non-graceful logic
+  // since there's another worker there to service the customer.
+  if (workerCount > 1) {
+    console.debug(
+      `Conference still has ${workerCount-1} worker participants, so no need to engage recovery logic here!`
+    );
+    return callback(null, {});
+  }
+
+  /*
+   * BEYOND THIS POINT = NON-GRACEFUL WORKER DISCONNECT
+   */
+  console.debug(`This was the last worker on the conference => Engaging recovery logic...`);
+
+  // Inform all remaining conference participants of what's happening
+  const fullAnnouncementPath = `https://${DOMAIN_NAME}/${ANNOUNCEMENT_PATH_CONNECTION_TO_AGENT_LOST}`;
+  await conferenceService.makeConferenceAnnouncement(
+    conferenceSid,
+    fullAnnouncementPath
+  );
+
+  // TODO: Make sure endConferenceOnExit is set appropriately for remaining participants - to avoid anyone being left alone when someone else drops
+  // TODO: Evaluate if we even need to. E.g. if call drops from 3 to 2 participants (and agent is gone), do we even need to set the 3rd party to 
+  // true? Worst case - vehicle remains in conf alone while reconnect happens.
+  //updateEndConferenceOnExitFlags();
+
+  const disconnectedTime = new Date().toISOString();
   
+  const parsedAttributes = JSON.parse(taskAttributes);
+
   // Update the task attributes for Flex to use if/when the agent recovers from the disconnection
   // (and also for reporting!)
   const disconnectedTaskAttributes = {
     ...parsedAttributes,
-    disconnectedTime: syncMapItemData.disconnectedTime,
+    disconnectedTime,
     conversations: {
       ...parsedAttributes.conversations,
       followed_by: "Reconnect Agent"
@@ -243,11 +260,11 @@ exports.handler = async function (context, event, callback) {
     ...parsedAttributes,
     disconnectedTaskSid: taskSid,
     disconnectedTaskWorkflowSid: taskWorkflowSid,
-    disconnectedWorkerSid: workerSid,
-    disconnectedWorkerName: workerName,
-    disconnectedCallSid: eventCallSid,
-    disconnectedConferenceSid: eventConferenceSid,
-    disconnectedTime: syncMapItemData.disconnectedTime,
+    disconnectedWorkerSid: workerThatLeft.workerSid,
+    disconnectedWorkerName: workerThatLeft.workerName,
+    disconnectedCallSid: workerThatLeft.workerCallSid,
+    disconnectedConferenceSid: conferenceSid,
+    disconnectedTime
   };
 
   const timeout = 15;
