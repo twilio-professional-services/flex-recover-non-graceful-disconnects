@@ -40,6 +40,7 @@ When there are multiple agents on the call, the non-graceful disconnect logic is
 
 If the remaining connected agent needs to get the disconnected agent back on the call, they could potentially warm transfer them back in. There is a risk that the disconnected agent might receive another call though - when they go available. This will be very tricky to orchestrate/automate through Flex UI - without Taskrouter/workflow logic. For example, shifting the worker into a dedicated activity that is an "available" activity, but one that is excluded from ACD calls.
 
+## Things to be aware of
 ### Flex `endConferenceOnExit` Idiosyncracies 
 Flex automatically updates `endConferenceOnExit` for the entire task reservation every time a conference update comes in (as well as on task acceptance - when the conference is created). And any time there are two or less active participants, it unavoidably sets `endConferenceOnExit` to `true`. This is a safeguard which is valid in most cases (just not this scenario where we are wanting the customer to remain connected to the Twilio conference on non-graceful agent disconnection).
 
@@ -48,6 +49,9 @@ We've worked around by essentially undoing the OOTB Flex conference participant 
 Also, the best place to execute this participant logic is in the exiting `ConferenceMonitor` of our flex-dialpad-addon-plugin (which we've made available through the above mentioned [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects)).
 
 A Flex feature request has been logged - to ideally allow this native Flex behavior to be configurable or overridden.
+
+### Use of Twilio Sync for State Model
+For the purposes of PoC, this solution uses a Global Sync Map for modelling conference state between Flex and the various event handlers on the backend. Twilio Sync should not be used for this purpose in a Production environment, as it will not scale to any amount of significant call volume, and may result in rate limiting errors. A self-hosted database should be used for managing this state.
 
 ### Edge Cases
 Lots of testing will reveal these. The current state is largely focused on the happy path, where remaining participants are active calls (not on hold) and nobody decides to intervene and drop from the conference during the reconnect orchestration. 

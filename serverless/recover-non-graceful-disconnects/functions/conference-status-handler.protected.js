@@ -161,10 +161,20 @@ exports.handler = async function (context, event, callback) {
   const workerThatLeft = workers ? workers.find((w) => w.workerCallSid === callSid) : undefined;
 
   if (didCustomerLeave) {
-    // Might need to use this information later
-    console.debug(
-      `Customer left conference. This is as good as conference-end, but just log it for now`
-    );
+    // Clear down the customer details from state model, as we only run the reconnect logic if the customer is on the 
+    // conference! Not for agent-to-agent or agent-to-3rd-party
+    const syncMapItemData = {
+      ...globalActiveConference,
+      customerCallSid: null
+    };
+  
+    await syncService.updateMapItem(
+        SYNC_SERVICE_SID,
+        globalSyncMapName,
+        conferenceSid,
+        syncMapItemData
+      );
+  
     return callback(null, {});
   }
 
@@ -172,20 +182,6 @@ exports.handler = async function (context, event, callback) {
     // We don't need to do anything unless it's an agent who disconnects non-gracefully
     // NOTE: Graceful terminations via Hangup, will clear out the worker from the state model
     console.debug(`No record of this call in our list of workers, so either not a worker, or they left gracefully`);
-    return callback(null, {});
-  }
-
-
-  // Go grab the conference and double-check it's not ended already (sometimes participant-leave events
-  // come before conference-end, sometimes after, so go to the source just to be sure)
-  const conference = await conferenceService.fetchConference(
-    conferenceSid
-  );
-
-  if (conference && conference.status === "completed") {
-    console.debug(
-      `Conference has ended with reason: '${conference.reasonConferenceEnded}. State will be deleted once conference-end is received`
-    );
     return callback(null, {});
   }
 
@@ -203,13 +199,35 @@ exports.handler = async function (context, event, callback) {
       globalSyncMapName,
       conferenceSid,
       syncMapItemData
-    );
+    );  
+
+
+  if (!customerCallSid) {
+    // We don't care about reconnect logic - if the customer's no longer on the conference
+    console.debug(`No customer on conference anymore, so ignoring reconnect logic`);
+    return callback(null, {});    
+  }
 
   // If the conference has more than one worker, then we don't need to execute our non-graceful logic
   // since there's another worker there to service the customer.
   if (workerCount > 1) {
     console.debug(
       `Conference still has ${workerCount-1} worker participants, so no need to engage recovery logic here!`
+    );
+    return callback(null, {});
+  }
+
+  // Go grab the conference and double-check it's not ended already (sometimes participant-leave events
+  // come before conference-end, sometimes after, so go to the source just to be sure)
+  // TODO: There may be improvements coming to participant-leave - that might include detail that alludes to 
+  // to the reason the participant left (i.e. might not need this lookup)
+  const conference = await conferenceService.fetchConference(
+    conferenceSid
+  );
+
+  if (conference && conference.status === "completed") {
+    console.debug(
+      `Conference has ended with reason: '${conference.reasonConferenceEnded}. State will be deleted once conference-end is received`
     );
     return callback(null, {});
   }
