@@ -110,6 +110,10 @@ exports.handler = async function (context, event, callback) {
           : undefined,
       isReconnect: true,
       conference: {},
+      conversations: {
+        ...taskAttributes.conversations,
+        conversation_id: taskAttributes.conversations && taskAttributes.conversations.conversation_id ? taskAttributes.conversations.conversation_id : taskAttributes.disconnectedTaskSid
+      }
     };
 
     const callSid = newAttributes.call_sid;
@@ -203,6 +207,6 @@ function isRelevantVoiceTaskEvent(event) {
   return (
     taskChannel === "voice" &&
     eventType === "task-queue.entered" &&
-    taskAttributes.isReconnect === true
+    taskAttributes.isReconnect
   );
 }

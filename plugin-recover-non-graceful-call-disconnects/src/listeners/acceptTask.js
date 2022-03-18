@@ -27,7 +27,7 @@ export default function acceptTask() {
       // payload.conferenceOptions.endConferenceOnExit = false;
 
       payload.conferenceOptions.conferenceStatusCallback = `${utils.baseServerlessUrl}/conference-status-handler`;
-      payload.conferenceOptions.conferenceStatusCallbackEvent = "end,leave";
+      payload.conferenceOptions.conferenceStatusCallbackEvent = "end,join,leave,modify";
       console.debug("Conference Options", payload.conferenceOptions);
     }
   });

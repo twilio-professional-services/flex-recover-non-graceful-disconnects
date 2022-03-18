@@ -70,7 +70,7 @@ async function initializeReservation(reservation) {
       sid: reservationSid,
     });
 
-    utils.showReconnectDialog("Disconnected from vehicle.", "Reconnecting you now...");
+    utils.showReconnectDialog("Disconnected from customer.", "Reconnecting you now...");
 
     return;
   }
@@ -113,7 +113,7 @@ async function initializeReservation(reservation) {
           console.debug(
             `Reservation finished. Attributes`, reservation.task.attributes
           );
-          if (reservation.task.attributes.wasPingSuccessful === true) {
+          if (reservation.task.attributes.wasPingSuccessful) {
             console.debug(
               `Retaining dialog`
             );
@@ -127,7 +127,7 @@ async function initializeReservation(reservation) {
       });
       
       // This action will show the modal dialog - essentially blocking UI input
-      utils.showReconnectDialog("Disconnected from vehicle.", "Awaiting reconnection...");
+      utils.showReconnectDialog("Disconnected from customer.", "Awaiting reconnection...");
 
       return;
     }
@@ -179,12 +179,11 @@ async function reservationAccepted(reservation) {
     console.debug(
       "reservationAccepted > Waiting for customer and worker to join the conference"
     );
+
+    // It can take a few milliseconds for the conference and partricpants to be populated in Redux
     await waitForConferenceParticipants(task);
 
     const myParticipant = utils.getMyWorkerParticipantFromConference(task.conference);
-
-    console.debug("reservationAccepted > conference", task.conference);
-    console.debug("reservationAccepted > myParticipant", myParticipant);
 
     // Add the worker's details to backend state model for use by conference status callback
     // Only when there's one worker left on the conference, do we engage the recovery logic upon
@@ -200,22 +199,18 @@ async function reservationAccepted(reservation) {
       utils.manager.workerClient.attributes.full_name
     );
 
+    // *** IMPORTANT NOTE! *********
     // By this point, Flex's own reservationAccepted logic will have detected that there are only 2 participants, and
-    // will have made sure the worker's endConferenceOnExit flag is set to true (despite any effort we make to initialize it
-    // to false during AcceptTask). So we are best to just wait til everyone has joined, conference has started, and then
-    // make the update to the worker participant.
-    // TODO: This logic should be shifted to our conference status callback listener (but there's a bug with `conference-modify` event type)
-    await ConferenceService.updateEndConferenceOnExit(
-      task.conference.conferenceSid,
-      myParticipant.callSid,
-      false
-    );
+    // will have made sure the worker's `endConferenceOnExit` flag is set to true (despite any effort we make to initialize it
+    // to false during AcceptTask). Solution Gap is open for this lack of configurability.
+    // BUT FEAR NOT! Our conference status callback listener will react to the `participant-modify` event - and will undo it! :) 
 
-    // If this is a reconnect task (and it's not one that's just been transferred), update the modal dialog message and bring in the others!
-    if (task.attributes.isReconnect === true && !utils.isIncomingTransfer(task)) {
+    // If this is a reconnect task (and it's not an 'old' one that's just been transferred to me), update the modal dialog message 
+    // and bring in the others!
+    if (task.attributes.isReconnect && !utils.isIncomingTransfer(task)) {
       console.debug("It's a reconnect task");
 
-      let message = "Reconnected with vehicle!";
+      let message = "Reconnected with customer!";
       let messageDetail = undefined;
 
       if (task.attributes.disconnectedWorkerSid != utils.manager.workerClient.sid) {
@@ -264,7 +259,7 @@ function waitForConferenceParticipants(task) {
         waitForConferenceInterval = clearInterval(waitForConferenceInterval);
         return;
       }
-      if (conference === undefined || conference.conferenceSid === undefined) {
+      if (!conference || !conference.conferenceSid) {
         console.debug(
           "waitForConferenceParticipants > Conference not yet set on task"
         );

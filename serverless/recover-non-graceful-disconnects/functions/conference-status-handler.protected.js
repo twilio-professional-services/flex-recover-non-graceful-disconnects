@@ -7,6 +7,9 @@ const Twilio = require("twilio");
  *
  * Also reacts to participant-modify events, amnd makes sure to UNDO any over-zealous
  * setting of endConferenceOnExit=true, that Flex does out of the box.
+ * 
+ * TODO: Put dialpad ConferenceMonitor logic in here too - to manipulate endConferenceOnExit
+ * as participants join and leave
  *
  * NOTE: For detecting who the agent is, we use a Sync Map - which our Flex Plugin
  * will populate - to remove the need to make expensive REST API calls to Taskrouter.
@@ -49,11 +52,15 @@ exports.handler = async function (context, event, callback) {
     ConferenceSid: conferenceSid,
     StatusCallbackEvent: statusCallbackEvent,
     Reason: eventReason,
+    EndConferenceOnExit: eventEndConferenceOnExit
   } = event;
 
 
   // TODO: Minimize use of global Sync Map (not scalable)
   console.debug(`'${statusCallbackEvent}' event for ${conferenceSid}`);
+
+  //Object.keys(event).forEach(prop => console.debug(`[${statusCallbackEvent}] event.${prop}: `, event[prop]));
+
 
   // Object.keys(event).forEach((key) => console.debug(`${key}: ${event[key]}`));
   // Global sync map is used by the conference status handler to find the worker associated with
@@ -99,20 +106,18 @@ exports.handler = async function (context, event, callback) {
 
   // Bail out early if it's not an event we care about
   if (
-    statusCallbackEvent !== "participant-leave" //&&
-    //statusCallbackEvent !== "participant-modify" // EDIT: Buggy/doesn't work
+    statusCallbackEvent !== "participant-leave" &&
+    //statusCallbackEvent !== "participant-join" && 
+    statusCallbackEvent !== "participant-modify" 
+    
   ) {
     return callback(null, {});
   }
 
-  /**
-   * PARTICIPANT-MODIFY (NOT POSSIBLE DUE TO FLEX BUG)
-   */
-
   /*
+   * PARTICIPANT-MODIFY
+   */
   if (statusCallbackEvent === "participant-modify") {
-    // EDIT: Not working due to Flex Orchestration bug (see README)
-
     // We're purely interested in undoing any Flex OOTB manipulation of endConferenceOnExit.
     // For purposes of this agent disconnect use case, we care about worker only, and ensuring
     // their endConferenceOnExit flag is false (to ensure others get to hang out in conference together
@@ -120,35 +125,32 @@ exports.handler = async function (context, event, callback) {
     // The ONLY time we want endConferenceOnExit to actually be true (at the time of writing) is for the customer
     // participant (unless we explicitly override it to false for certain scenarios - like when pulling the customer
     // out of an old conference, into a new one)
-    const wasAgentModified = workerCallSid && workerCallSid === eventCallSid;
-    if (wasAgentModified) {
-      console.debug(`Agent participant ${eventCallSid} was modified`);
-      if (eventEndConferenceOnExit === true) {
+    const workerThatWasModified = workers ? workers.find((w) => w.workerCallSid === callSid) : undefined;
+    if (workerThatWasModified) {
+      console.debug(`Worker participant ${callSid} was modified. endConferenceOnExit: ${eventEndConferenceOnExit}`);
+      if (eventEndConferenceOnExit == "true") {
         // TODO: Special logic if we don't want this behavior for certain calls/tasks
         console.debug(
-          `Agent participant ${eventCallSid} has an UNEXPECTED endConferenceOnExit value of 'true'. Undoing this...`
+          `Worker participant ${callSid} has an UNEXPECTED endConferenceOnExit value of '${eventEndConferenceOnExit}'. Undoing this...`
         );
-        console.debug(
-          `Setting endConferenceOnExit to 'false' for participant ${eventCallSid} in conference ${eventConferenceSid}`
-        );
-        const serviceResponse = await conferenceService.setEndConferenceOnExit(
-          eventConferenceSid,
-          eventCallSid,
+        await conferenceService.setEndConferenceOnExit(
+          conferenceSid,
+          callSid,
           false
         );
       } else {
         console.debug(
-          `Agent participant ${eventCallSid} wasn't modified in any way we care about. Ignoring`
+          `Worker participant ${callSid} wasn't modified in any way we care about. Ignoring`
         );
       }
     } else {
       console.debug(
-        `Non-agent participant ${eventCallSid} was modified. Don't care!`
+        `Non-agent participant ${callSid} was modified. Don't care!`
       );
     }
     return callback(null, {});
   }
-  */
+
 
 
   /**

@@ -1,6 +1,6 @@
 {
   "name": "plugin-recover-non-graceful-call-disconnects",
-  "version": "13.0.0",
+  "version": "20.0.0",
   "private": true,
   "scripts": {
     "postinstall": "flex-plugin pre-script-check",
@@ -10,14 +10,16 @@
   "dependencies": {
     "@emotion/core": "^10.0.28",
     "@emotion/styled": "^10.0.27",
-    "flex-plugin-scripts": "4.0.0",
     "log-prefix": "^0.1.1",
     "react": "16.5.2",
-    "react-dom": "16.5.2"
+    "react-dom": "16.5.2",
+    "@twilio/flex-plugin-scripts": "5.0.4",
+    "react-emotion": "9.2.12"
   },
   "devDependencies": {
-    "@twilio/flex-ui": "^1",
     "@material-ui/core": "^3.9.3",
+    "@twilio/flex-ui": "^1",
+    "dotenv-webpack": "^7.1.0",
     "prettier": "^2.5.1",
     "react-test-renderer": "16.5.2"
   }
