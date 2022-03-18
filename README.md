@@ -28,13 +28,6 @@ The use case here is really to offer robust, exceptional quality of service to h
     * If ping is answered by the disconnected worker, the original customer from the disconnected conference is enqueued via Taskrouter - to the same worker
     * If ping hits it's TTL, the customer call is enqueued to the same workflow as the original call was handled on, and priority level is elevated
 
-## Dependency on Dialpad Addon 
-This repo pairs with a [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects) of the PS Flex Dialpad Addon Plugin - which essentially makes sure the `endConferenceOnExit` flag for the worker participant is always `false` - even when on a 2-party conference where the flag would traditionally be `true` for both parties. 
-
-This will allow all of our orchestration logic (from this repo) to take care of keeping all non-agent conference participants on the line - and talking - while getting the call task back over to the disconnected agent (or back in queue if they are non-reachable).
-
-See also "Flex `endConferenceOnExit` Idiosyncracies" under "Known Issues & Improvements Needed" below - as there are some necessary workarounds due to concurrent OOTB Flex orchestration of that same `endConferenceOnExit` flag.
-
 ## Warm Transfers to other Agents
 When there are multiple agents on the call, the non-graceful disconnect logic is not critical - since there is coverage for the customer if one agent drops unexpectedly (e.g. refreshes their page). Therefore, we only engage the non-graceful disconnect logic if it was the LAST agent on the call who disconnected-non-gracefully. This is easiest from a design persepective, and also from an end user-experience perspective.
 
@@ -44,19 +37,12 @@ If the remaining connected agent needs to get the disconnected agent back on the
 ### Flex `endConferenceOnExit` Idiosyncracies 
 Flex automatically updates `endConferenceOnExit` for the entire task reservation every time a conference update comes in (as well as on task acceptance - when the conference is created). And any time there are two or less active participants, it unavoidably sets `endConferenceOnExit` to `true`. This is a safeguard which is valid in most cases (just not this scenario where we are wanting the customer to remain connected to the Twilio conference on non-graceful agent disconnection).
 
-We've worked around by essentially undoing the OOTB Flex conference participant update when it happens - but it does introduce split-second transient periods where `endConferenceOnExit` will be `true` for the two participants in conference (until our explicit API call executes to apply our desired settings).
-
-Also, the best place to execute this participant logic is in the exiting `ConferenceMonitor` of our flex-dialpad-addon-plugin (which we've made available through the above mentioned [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects)).
+We've worked around by essentially undoing the OOTB Flex conference participant update when it happens - but it does introduce split-second transient periods where `endConferenceOnExit` will be `true` for the two participants in conference (until our `participant-modify` event handler's explicit API call executes to apply our desired settings).
 
 A Flex feature request has been logged - to ideally allow this native Flex behavior to be configurable or overridden.
 
 ### Use of Twilio Sync for State Model
 For the purposes of PoC, this solution uses a Global Sync Map for modelling conference state between Flex and the various event handlers on the backend. Twilio Sync should not be used for this purpose in a Production environment, as it will not scale to any amount of significant call volume, and may result in rate limiting errors. A self-hosted database should be used for managing this state.
-
-### Edge Cases
-Lots of testing will reveal these. The current state is largely focused on the happy path, where remaining participants are active calls (not on hold) and nobody decides to intervene and drop from the conference during the reconnect orchestration. 
-
-It also assumes a single page refresh by the agent. What if they refresh while the modal dialog is active and the reconnect process is happening? 
 
 ### Reporting Impact
 We've added a `followed_by` attribute to the Insights `conversations` object within task attributes. Whenever the agent disconnects ungracefully, we set this to `followed_by = "Reconnect Agent"` - which is something you can then report on via Flex Insights.
@@ -189,10 +175,6 @@ This is needed for the handling of the task events - in order to detect when the
 ## Twilio Flex Plugins
 This section will go through the steps to prepare the Flex plugins in this sample solution for use in your development environment and deployment to your Flex account.
 
-### Flex Dialpad Addon Plugin Dependency
-Make sure you have deployed (or ran `twilio flex:plugins:start` once locally - if testing locally - to register the plugin), the required [branch](https://github.com/twilio-professional-services/flex-dialpad-addon-plugin/tree/recover-non-graceful-disconnects) of the Flex Dialpad Addon plugin - to properly handle the setting of the `endConferenceOnExit` flag during external transfers.
-
-At the time of writing, there are no additional config steps necessary aside from the standard steps required for that plugin and serverless bundle.
 ### Plugin Prep/Config
 
 
@@ -213,10 +195,10 @@ At the time of writing, there are no additional config steps necessary aside fro
 
 ### Development
 
-1. Navigate to `plugin-recover-non-graceful-call-disconnects` and start the plugin. NOTE: You'll need to make sure it also starts the dialpad addon plugin - either via referencing a remotely deployed plugin name, or more likely a locally registered plugin - which is the example below. Refer to the [Run Multiple Plugins Locally Using the Flex Plugins CLI](https://www.twilio.com/docs/flex/developer/plugins/cli/run-multiple-plugins) documentation for more information.
+1. Navigate to `plugin-recover-non-graceful-call-disconnects` and start the plugin. 
 
     ```bash
-    twilio flex:plugins:start --name flex-dialpad-addon-plugin
+    twilio flex:plugins:start
     ```
 
 Once you login to Flex running on your local dev environment at `localhost:3000`, the Flex UI will load. At that point you are ready to test and further develop the Flex plugins.
