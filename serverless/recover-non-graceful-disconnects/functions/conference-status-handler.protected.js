@@ -126,8 +126,8 @@ exports.handler = async function (context, event, callback) {
     // participant (unless we explicitly override it to false for certain scenarios - like when pulling the customer
     // out of an old conference, into a new one)
     const workerThatWasModified = workers ? workers.find((w) => w.workerCallSid === callSid) : undefined;
-    if (workerThatWasModified) {
-      console.debug(`Worker participant ${callSid} was modified. endConferenceOnExit: ${eventEndConferenceOnExit}`);
+    if (workerThatWasModified && customerCallSid) {
+      console.debug(`Worker participant ${callSid} was modified and customer call still active. endConferenceOnExit: ${eventEndConferenceOnExit}`);
       if (eventEndConferenceOnExit == "true") {
         // TODO: Special logic if we don't want this behavior for certain calls/tasks
         console.debug(
