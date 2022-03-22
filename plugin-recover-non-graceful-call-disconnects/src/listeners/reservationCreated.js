@@ -203,7 +203,17 @@ async function reservationAccepted(reservation) {
     // By this point, Flex's own reservationAccepted logic will have detected that there are only 2 participants, and
     // will have made sure the worker's `endConferenceOnExit` flag is set to true (despite any effort we make to initialize it
     // to false during AcceptTask). Solution Gap is open for this lack of configurability.
-    // BUT FEAR NOT! Our conference status callback listener will react to the `participant-modify` event - and will undo it! :) 
+    // Our conference status callback listener *might* react to the `participant-modify` event and undo this - depending on timing.
+    // However, sometimes the `participant-modify` event arrives before/during the call to `addWorker()` above, and so can't tell
+    // if it's for an agent or some other participant. Best to explitly make the update here too.
+    // explicitly apply the update here also.
+    await ConferenceService.updateEndConferenceOnExit(
+      task.conference.conferenceSid,
+      myParticipant.callSid,
+      false
+    );
+
+
 
     // If this is a reconnect task (and it's not an 'old' one that's just been transferred to me), update the modal dialog message 
     // and bring in the others!

@@ -25,9 +25,43 @@ class ConferenceService {
     return endConferenceResult;
   };
 
-
   /**
    * Updates the participant's endConferenceOnExit flag
+   *
+   * @param conferenceSid
+   * @param participantCallSid
+   * @param endConferenceOnExit
+   */
+     static updateEndConferenceOnExit = async (
+      conferenceSid,
+      participantCallSid,
+      endConferenceOnExit
+    ) => {
+      console.debug("updateEndConferenceOnExit", participantCallSid);
+  
+      const updateEndConferenceOnExitUrl = `${utils.baseServerlessUrl}/flex/update-end-conference-on-exit`;
+      const fetchBody = {
+        Token: utils.userToken,
+        conferenceSid,
+        participantCallSid,
+        endConferenceOnExit,
+      };
+  
+      const fetchOptions = utils.fetchPostUrlEncoded(fetchBody);
+      const fetchResponse = await fetch(
+        updateEndConferenceOnExitUrl,
+        fetchOptions
+      );
+      const updateEndConferenceOnExitResult = await fetchResponse.json();
+      console.debug(
+        "updateEndConferenceOnExit result",
+        updateEndConferenceOnExitResult
+      );
+      return updateEndConferenceOnExitResult;
+    };
+
+  /**
+   * Brings any leftover members of a disconnected conference over to the new conference
    *
    * @param conferenceSid
    * @param newConferenceName
