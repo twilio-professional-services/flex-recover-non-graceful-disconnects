@@ -101,7 +101,8 @@ exports.handler = async function (context, event, callback) {
 
     // If the ping task was successful (aka completed), then route to agent
     // If the ping task was unsuccessful (aka canceled), then route to queue
-    // Clear the existing conference details from attributes (might not be needed, but seems wise)
+    // Clear the existing/disconnected conference details from attributes (so that taskrouter
+    // can repopulate when the new/reconnected conference is setup)
     const newAttributes = {
       ...taskAttributes,
       targetWorkerSid:
