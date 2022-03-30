@@ -44,7 +44,7 @@ class Utils {
   }
 
   getMyWorkerParticipantFromConference(conference) {
-    return conference.participants.find((p) => p.participantType === "worker" && p.isMyself);
+    return conference.participants.find((p) => p.isMyself && p.status == "joined");
   }
 
   isRecoveryPingTask(task) {
