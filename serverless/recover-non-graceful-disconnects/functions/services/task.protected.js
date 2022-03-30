@@ -51,8 +51,47 @@ const updateTask = async (workspaceSid, taskSid, payload) => {
 
 };
 
+const getReservation = async (workspaceSid, taskSid, reservationSid) => {
+  console.debug(`Fetching ${reservationSid} from Taskrouter`);
+  try {
+    const reservation = await twilioClient.taskrouter
+      .workspaces(workspaceSid)
+      .tasks(taskSid)
+      .reservations(reservationSid)
+      .fetch();
+    return reservation;
+  } catch (error) {
+    console.debug(`Unable to find ${reservationSid}`);
+    return undefined;
+  }
+};
+
+const updateReservation = async (workspaceSid, taskSid, reservationSid, payload) => {
+  console.debug(
+    `Updating task ${reservationSid} with payload ${JSON.stringify(payload)}`
+  );
+
+  try {
+    const reservation = await twilioClient.taskrouter
+      .workspaces(workspaceSid)
+      .tasks(taskSid)
+      .reservations(reservationSid)
+      .update(payload);
+    console.debug(
+      `Updated reservation ${reservationSid} successfully`
+    );
+    return reservation;
+  } catch (error) {
+    console.debug(`Error updating reservation ${reservationSid}`, error);
+    return undefined;
+  }
+
+};
+
 module.exports = {
   createTask,
   getTask,
   updateTask,
+  getReservation,
+  updateReservation
 };

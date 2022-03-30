@@ -170,7 +170,6 @@ async function reservationAccepted(reservation) {
 
   // If task is assigned to me, then persist state to backend (e.g. Sync) so that conference status
   // callback listener can determine who's who...
-  // TODO: Make all of this work for transfers too. Right now it only caters to original assigned
   // worker.
   if (
     TaskHelper.isCallTask(task)
@@ -195,6 +194,7 @@ async function reservationAccepted(reservation) {
       task.workflowSid,
       task.attributes.call_sid, // customer call SID
       task.workerSid,
+      task.sid,
       myParticipant.callSid,
       utils.manager.workerClient.attributes.full_name
     );

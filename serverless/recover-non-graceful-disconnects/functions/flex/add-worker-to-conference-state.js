@@ -30,6 +30,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     taskAttributes,
     customerCallSid,
     workerSid,
+    workerReservationSid,
     workerCallSid,
     workerName,
   } = event;
@@ -47,6 +48,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   const workers = [
     {
       workerSid,
+      workerReservationSid,
       workerName,
       workerCallSid,
     },

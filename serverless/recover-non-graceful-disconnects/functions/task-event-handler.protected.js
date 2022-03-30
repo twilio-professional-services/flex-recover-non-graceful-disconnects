@@ -12,8 +12,6 @@ const Twilio = require("twilio");
  * recovered, and a new task is enqueued to the same queue - for next available agent to
  * grab.
  *
- * TODO: Add plugin logic to cater to reconnect tasks arriving to another agent
- *
  * See https://www.twilio.com/docs/taskrouter/api/event/reference#event-callbacks
  * @param {*} context
  * @param {*} event
@@ -65,12 +63,6 @@ exports.handler = async function (context, event, callback) {
   console.debug(`task_attributes: ${taskAttributesString}`);
   console.debug(`workflow_sid: ${workflowSid}`);
 
-  // Make sure we prep for the customer dropping out of multiparty conference (i.e. don't end it!)
-  // TODO: Keep conference going if multiple parties
-  // console.debug(
-  //   `Setting endConferenceOnExit to ${endConferenceOnExit} for participant ${participantCallSid} in conference ${conferenceSid}`
-  // );
-  // await conference.updateConferenceParticipant(conferenceSid, participantCallSid, { endConferenceOnExit });
 
   if (isRelevantPingTaskEvent(context, event)) {
     // We know ping task was accepted or canceled
@@ -146,30 +138,30 @@ exports.handler = async function (context, event, callback) {
 
   if (isRelevantVoiceTaskEvent(event)) {
     // The reconnect voice task entered the task queue.
-    // This is the optimal point to complete the original voice task that's assigned to the disconnected agent
+    // This is the optimal point to complete the original voice task reservation that's assigned to the disconnected agent
     // as it minimizes (arguably elimates) risk of another voice call reservation being made against that agent.
     // e.g. if we completed the task within Flex upon receipt of the ping task, there may not yet be a reconnect task
     // sitting in queue for the agent, and so any other pending voice task could be reserved to the agent.
     // The reconnect task is always a higher priority task, so as long as it's in the queue - it will be the first task
     // to be reserved to the agent.
 
-    // Check if original task isn't already completed first (since it's possible that this event could fire more than
+    // Check if original reservation isn't already completed first (since it's possible that this event could fire more than
     // once - e.g. if task falls back to an overflow queue)
     // TODO: Pull task state in from our state model vs TR REST API
     const originalTaskSid = taskAttributes.disconnectedTaskSid;
-    const originalTask = await taskService.getTask(
+    const originalReservationSid = taskAttributes.disconnectedReservationSid;
+    const originalReservation = await taskService.getReservation(
       WORKSPACE_SID,
-      originalTaskSid
+      originalTaskSid,
+      originalReservationSid
     );
-    if (originalTask && originalTask.assignmentStatus === "wrapping") {
+    if (originalReservation && originalReservation.reservationStatus === "wrapping") {
       console.debug(
-        `Completing original disconnected call task with SID ${originalTaskSid}`
+        `Completing original disconnected call reservation with SID ${originalReservationSid}`
       );
 
-      await taskService.updateTask(WORKSPACE_SID, originalTaskSid, {
-        assignmentStatus: "completed",
-        reason:
-          "Non-graceful agent disconnection resulted in a new reconnect task"
+      await taskService.updateReservation(WORKSPACE_SID, originalTaskSid, originalReservationSid, {
+        reservationStatus: "completed"
       });
     }
   }

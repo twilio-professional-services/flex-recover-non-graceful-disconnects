@@ -14,8 +14,8 @@ class ConferenceStateService {
     taskAttributes,
     taskWorkflowSid,
     customerCallSid,
-
     workerSid,
+    workerReservationSid,
     workerCallSid,
     workerName
   ) => {
@@ -30,6 +30,7 @@ class ConferenceStateService {
       taskWorkflowSid,
       customerCallSid,
       workerSid,
+      workerReservationSid,
       workerCallSid,
       workerName
     };

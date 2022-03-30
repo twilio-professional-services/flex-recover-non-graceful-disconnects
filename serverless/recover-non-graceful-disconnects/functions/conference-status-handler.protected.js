@@ -90,7 +90,6 @@ exports.handler = async function (context, event, callback) {
 
 
 
-
   if (statusCallbackEvent === "conference-end") {
     // Clean up the Sync Map item on conference end - no longer of use
     console.debug(`Conference ended with reason: '${eventReason}'`);
@@ -246,11 +245,6 @@ exports.handler = async function (context, event, callback) {
     fullAnnouncementPath
   );
 
-  // TODO: Make sure endConferenceOnExit is set appropriately for remaining participants - to avoid anyone being left alone when someone else drops
-  // TODO: Evaluate if we even need to. E.g. if call drops from 3 to 2 participants (and agent is gone), do we even need to set the 3rd party to 
-  // true? Worst case - vehicle remains in conf alone while reconnect happens.
-  //updateEndConferenceOnExitFlags();
-
   const disconnectedTime = new Date().toISOString();
   
   const parsedAttributes = JSON.parse(taskAttributes);
@@ -275,7 +269,6 @@ exports.handler = async function (context, event, callback) {
   // If worker doesn't respond to the ping task within 15 sec timeout (configurable below_), our workflow event
   // callback URL will engage when the task.canceled event fires.
   // See https://www.twilio.com/docs/taskrouter/api/task#create-a-task-resource
-  // TODO: Get that timeout behavior tested!
   const newTaskAttributes = {
     ...parsedAttributes,
     disconnectedTaskSid: taskSid,
@@ -283,6 +276,7 @@ exports.handler = async function (context, event, callback) {
     disconnectedWorkerSid: workerThatLeft.workerSid,
     disconnectedWorkerName: workerThatLeft.workerName,
     disconnectedCallSid: workerThatLeft.workerCallSid,
+    disconnectedReservationSid: workerThatLeft.workerReservationSid,
     disconnectedConferenceSid: conferenceSid,
     disconnectedTime
   };
